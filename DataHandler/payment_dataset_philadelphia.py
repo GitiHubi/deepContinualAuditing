@@ -12,7 +12,7 @@ class PaymentDatasetPhiladephia(data.Dataset):
         self.data_dir = data_dir
 
         # set payments encoded and payment_ids
-        self.payments_encoded, self.payment_ids = self.get_Philadelphia_data(data_dir)
+        self.payments_encoded, self.payment_ids, self.payment_depts = self.get_Philadelphia_data(data_dir)
 
         # set targets equal to the inputs (for computing the reconstruction loss)
         self.targets = [0] * len(self.payments_encoded)
@@ -26,17 +26,20 @@ class PaymentDatasetPhiladephia(data.Dataset):
         transactions_encoded = pd.read_csv(data_dir, sep=',', encoding='utf-8')
         print("Data is loaded now.")
 
-        # determine encoded transactions ids
+        # determine encoded transactions ids and depts
         transactions_encoded_ids = transactions_encoded['id']
+        transactions_encoded_depts = transactions_encoded['dept']
 
         # remove non training relevant fields
-        transactions_encoded = transactions_encoded.drop(columns=['id', 'task'], axis=1)
+        transactions_encoded = transactions_encoded.drop(columns=['id', 'dept'], axis=1)
 
         # convert to numpy array of floats
         transactions_encoded = transactions_encoded.to_numpy().astype(np.float32)
+        transactions_encoded_ids = transactions_encoded_ids.to_numpy().astype(np.float32)
+        transactions_encoded_depts = transactions_encoded_depts.to_numpy().astype(np.float32)
 
         # return transactions and encoded transactions
-        return transactions_encoded, transactions_encoded_ids
+        return transactions_encoded, transactions_encoded_ids, transactions_encoded_depts
 
     # define the length method
     def __len__(self):
@@ -52,6 +55,7 @@ class PaymentDatasetPhiladephia(data.Dataset):
 
         # determine id mini batch
         payments_ids_batch = self.payment_ids[index]
+        payments_depts_batch = self.payment_depts[index]
 
-        # return input, target, id
-        return payments_encoded_batch, payments_encoded_batch, payments_ids_batch,
+        #           input,                    target                   id                  dept
+        return payments_encoded_batch, payments_encoded_batch , payments_ids_batch, payments_depts_batch

@@ -14,10 +14,10 @@ import numpy as np
 import torch
 
 from avalanche.benchmarks.generators import ni_benchmark
-from avalanche.training.strategies import Naive
+from avalanche.training.strategies import Naive, EWC
 from avalanche.evaluation.metrics import loss_metrics
-from avalanche.training.plugins import EvaluationPlugin
-from avalanche.logging import InteractiveLogger
+from avalanche.training.plugins import EvaluationPlugin, ReplayPlugin
+from avalanche.logging import InteractiveLogger, WandBLogger
 
 import UtilsHandler.UtilsHandler as UtilsHandler
 from DataHandler.payment_dataset_philadelphia import PaymentDatasetPhiladephia
@@ -48,7 +48,64 @@ def ae_criterion(out, target):
     return torch.nn.BCELoss()(pred, target)
 
 
-def main(experiment_parameters):
+def get_strategy(experiment_parameters, payment_ds, args):
+    # initialize evaluator for metrics and loggers
+    interactive_logger = InteractiveLogger()
+
+    run_name = experiment_parameters["strategy"] + "_nexp" + str(experiment_parameters["n_exp"])
+    wandb_logger = WandBLogger(project_name="ContinualAnomaly", run_name=run_name, config=args)
+
+    eval_plugin = EvaluationPlugin(
+        loss_metrics(minibatch=True, epoch=True, experience=True, stream=True),
+        loggers=[interactive_logger, wandb_logger]
+    )
+
+    # initialize model
+    model = get_model(experiment_parameters, payment_ds.payments_encoded)
+
+    # initialize optimizer
+    optimizer = torch.optim.Adam(params=model.parameters(),
+                                 lr=experiment_parameter['learning_rate'],
+                                 weight_decay=experiment_parameter['weight_decay'])
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if experiment_parameters["strategy"] == "Naive":
+        strategy = Naive(model=model,
+                         optimizer=optimizer,
+                         criterion=ae_criterion,
+                         train_mb_size=experiment_parameters["batch_size"],
+                         train_epochs=experiment_parameters["no_epochs"],
+                         evaluator=eval_plugin,
+                         device=device)
+
+    elif experiment_parameters["strategy"] == "EWC":
+        strategy = EWC(model=model,
+                       optimizer=optimizer,
+                       criterion=ae_criterion,
+                       ewc_lambda=500,
+                       train_mb_size=experiment_parameters["batch_size"],
+                       train_epochs=experiment_parameters["no_epochs"],
+                       evaluator=eval_plugin,
+                       device=device)
+
+    elif experiment_parameters["strategy"] == "Replay":
+        replay_plugin = ReplayPlugin(mem_size=500)
+        strategy = Naive(model=model,
+                       optimizer=optimizer,
+                       criterion=ae_criterion,
+                       train_mb_size=experiment_parameters["batch_size"],
+                       train_epochs=experiment_parameters["no_epochs"],
+                       evaluator=eval_plugin,
+                       plugins=[replay_plugin],
+                       device=device)
+
+    else:
+        raise NotImplementedError()
+
+    return strategy
+
+
+def main(experiment_parameters, args):
     """ Main function: initializes the dataset and creates benchmark for
         continual learning. Then, it loops over all experiences and trains/evaluates
         the model using a defined strategy.
@@ -57,37 +114,15 @@ def main(experiment_parameters):
     payment_ds = PaymentDatasetPhiladephia(experiment_parameters['data_dir'])
 
     # create an instance-incremental benchmark by which new samples become available over time
-    benchmark = ni_benchmark(payment_ds, payment_ds, n_experiences=5)
+    benchmark = ni_benchmark(payment_ds, payment_ds, n_experiences=experiment_parameters["n_exp"])
 
-    # initialize model
-    model = get_model(experiment_parameters, payment_ds.payments_encoded)
-
-    # initialize optimizer
-    optimizer = torch.optim.Adam(params=model.parameters(),
-                                 lr=experiment_parameters['learning_rate'],
-                                 weight_decay=experiment_parameters['weight_decay'])
-
-    # initialize evaluator for metrics and loggers
-    interactive_logger = InteractiveLogger()
-    eval_plugin = EvaluationPlugin(
-        loss_metrics(minibatch=True, epoch=True, experience=True, stream=True),
-        loggers=[interactive_logger]
-    )
-
-    # initialize strategy: strategy refers to the algorithm used for training/evaluating the model
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    strategy = Naive(model=model,
-                     optimizer=optimizer,
-                     criterion=ae_criterion,
-                     train_mb_size=experiment_parameters["batch_size"],
-                     train_epochs=experiment_parameters["no_epochs"],
-                     evaluator=eval_plugin,
-                     device=device)
+    # get strategy
+    strategy = get_strategy(experiment_parameters, payment_ds, args)
 
     # iterate through all experiences (tasks) and train the model over each experience
     for exp_id, exp in enumerate(benchmark.train_stream):
         strategy.train(exp)
-        strategy.eval(benchmark.train_stream)
+        strategy.eval(benchmark.train_stream[:exp_id+1])
 
 
 # define main function
@@ -142,7 +177,13 @@ if __name__ == "__main__":
     parser.add_argument('--checkpoint_epoch', help='', nargs='?', type=int, default=1)
     parser.add_argument('--checkpoint_save', help='', type=str, default='True')
 
+    # new
+    parser.add_argument('--strategy', help='', nargs='?', type=str, default='Naive')
+    parser.add_argument('--wandb_proj', help='', nargs='?', type=str, default='ContinualAnomaly')
+    parser.add_argument('--n_exp', help='', nargs='?', type=int, default=10)
+
     # parse script arguments
+    args = parser.parse_args()
     experiment_parameter = vars(parser.parse_args())
 
     # determine hardware device
@@ -176,4 +217,4 @@ if __name__ == "__main__":
 
     # case: baseline autoencoder experiment
     if experiment_parameter['architecture'] == 'baseline':
-        main(experiment_parameter)
+        main(experiment_parameter, args)
