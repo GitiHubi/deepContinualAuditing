@@ -1,0 +1,11 @@
+
+# department IDs
+dept_ids: [10, 25, 22]
+
+# number of experiments
+n_experiments: 3
+
+#    dept ids:  10   25   22
+dept_percnt: [[1.0, 0.0, 0.0], # exp-1
+              [0.0, 1.0, 0.0], # exp-2
+              [0.0, 0.0, 1.0]] # exp-3
