@@ -12,22 +12,37 @@ print("NUMBER OF THREADS ARE LIMITED NOW ...")
 import argparse
 import numpy as np
 import torch
+import yaml
+from random import shuffle
+import wandb
+import time
 
 from avalanche.benchmarks.generators import ni_benchmark
 from avalanche.training.strategies import Naive, EWC
 from avalanche.evaluation.metrics import loss_metrics
 from avalanche.training.plugins import EvaluationPlugin, ReplayPlugin
 from avalanche.logging import InteractiveLogger, WandBLogger
+from avalanche.benchmarks.utils.avalanche_dataset import AvalancheSubset
+import copy
 
 import UtilsHandler.UtilsHandler as UtilsHandler
 from DataHandler.payment_dataset_philadelphia import PaymentDatasetPhiladephia
 import NetworkHandler.BaselineAutoencoder as BaselineAutoencoder
 
 
+def load_params(yml_file_path):
+    """ Loads param file and returns a dictionary. """
+    with open(yml_file_path, "r") as yaml_file:
+        params = yaml.safe_load(yaml_file)
+
+    return params
+
+
 def get_model(experiment_parameter, transactions_encoded):
     # update the encoder and decoder network input dimensionality depending on the training data
     experiment_parameter['encoder_dim'].insert(0, transactions_encoded.shape[1])
-    experiment_parameter['decoder_dim'].insert(len(experiment_parameter['decoder_dim']), transactions_encoded.shape[1])
+    experiment_parameter['decoder_dim'].insert(len(experiment_parameter['decoder_dim']),
+                                               transactions_encoded.shape[1])
 
     # init the baseline autoencoder model
     model = BaselineAutoencoder.BaselineAutoencoder(
@@ -48,16 +63,46 @@ def ae_criterion(out, target):
     return torch.nn.BCELoss()(pred, target)
 
 
+def get_exp_assignment(params, payment_ds):
+    """ Creates index assignment for each experiment according to the percentage of
+    data specified for each dept. id
+    """
+    dept_ids = params["dept_ids"]
+    data_prcnt = params["dept_percnt"]
+    n_experiences = len(data_prcnt)
+
+    ds_dep_indices = {d: list(np.where(payment_ds.payment_depts == d)[0]) for d in dept_ids}
+    ds_dep_count = {d: len(ds_dep_indices[d]) for d in ds_dep_indices.keys()}
+
+    # shuffle ds dept. indices
+    _ = [shuffle(ds_dep_indices[d]) for d in ds_dep_indices.keys()]
+
+    exp_assignments = []
+    for exp_id in range(n_experiences):
+        percentages = data_prcnt[exp_id]
+        exp_samples = []
+        for i in range(len(percentages)):
+            dept_i = dept_ids[i]
+            dept_perc_dep_i = percentages[i]
+            n_samples_dept_i = int(dept_perc_dep_i * ds_dep_count[dept_i])
+            sampels_i = ds_dep_indices[dept_i][:n_samples_dept_i]
+            ds_dep_indices[dept_i] = ds_dep_indices[dept_i][n_samples_dept_i:]
+            exp_samples.extend(sampels_i)
+        exp_assignments.append(exp_samples)
+
+    return exp_assignments
+
+
 def get_strategy(experiment_parameters, payment_ds, args):
     # initialize evaluator for metrics and loggers
     interactive_logger = InteractiveLogger()
 
-    run_name = experiment_parameters["strategy"] + "_nexp" + str(experiment_parameters["n_exp"])
-    wandb_logger = WandBLogger(project_name="ContinualAnomaly", run_name=run_name, config=args)
+    # run_name = experiment_parameters["strategy"] + "_nexp" + str(experiment_parameters["n_exp"])
+    # wandb_logger = WandBLogger(project_name="ContinualAnomaly", run_name=run_name, config=args)
 
     eval_plugin = EvaluationPlugin(
         loss_metrics(minibatch=True, epoch=True, experience=True, stream=True),
-        loggers=[interactive_logger, wandb_logger]
+        loggers=[interactive_logger]
     )
 
     # initialize model
@@ -91,13 +136,13 @@ def get_strategy(experiment_parameters, payment_ds, args):
     elif experiment_parameters["strategy"] == "Replay":
         replay_plugin = ReplayPlugin(mem_size=500)
         strategy = Naive(model=model,
-                       optimizer=optimizer,
-                       criterion=ae_criterion,
-                       train_mb_size=experiment_parameters["batch_size"],
-                       train_epochs=experiment_parameters["no_epochs"],
-                       evaluator=eval_plugin,
-                       plugins=[replay_plugin],
-                       device=device)
+                         optimizer=optimizer,
+                         criterion=ae_criterion,
+                         train_mb_size=experiment_parameters["batch_size"],
+                         train_epochs=experiment_parameters["no_epochs"],
+                         evaluator=eval_plugin,
+                         plugins=[replay_plugin],
+                         device=device)
 
     else:
         raise NotImplementedError()
@@ -114,25 +159,86 @@ def main(experiment_parameters, args):
     payment_ds = PaymentDatasetPhiladephia(experiment_parameters['data_dir'])
 
     # create an instance-incremental benchmark by which new samples become available over time
-    benchmark = ni_benchmark(payment_ds, payment_ds, n_experiences=experiment_parameters["n_exp"])
+    params = load_params(experiment_parameters["params_path"])
+    exp_assignments = get_exp_assignment(params, payment_ds)
+    benchmark = ni_benchmark(payment_ds,
+                             payment_ds,
+                             n_experiences=params["n_experiments"],
+                             fixed_exp_assignment=exp_assignments)
 
     # get strategy
     strategy = get_strategy(experiment_parameters, payment_ds, args)
 
+    # initialize WandB
+    run_name = experiment_parameters["strategy"] + "_nexp" + str(experiment_parameters["n_exp"])
+    run_name += "_" + time.strftime("%Y%m%d%H%M%S")
+    log_wandb = args.wandb_proj != ''
+    if log_wandb:
+        wandb.init(
+            project=args.wandb_proj,
+            config=experiment_parameters,
+            id=run_name)
+        wandb.run.name = run_name
+
+    # create folder for the current experiment
+    output_path = os.path.join(args.outputs_path, run_name)
+    os.makedirs(output_path, exist_ok=True)
+
+    global_iter = 0
     # iterate through all experiences (tasks) and train the model over each experience
     for exp_id, exp in enumerate(benchmark.train_stream):
-        strategy.train(exp)
-        strategy.eval(benchmark.train_stream[:exp_id+1])
+        res_train = strategy.train(exp)
+        loss_train_exp = res_train[f"Loss_Epoch/train_phase/train_stream/Task000"]
+
+        # eval loss for the current experiment
+        res_eval = strategy.eval(benchmark.train_stream[:exp_id+1])
+        loss_eval_exp = res_eval[f"Loss_Exp/eval_phase/train_stream/Task000/Exp{exp_id:03d}"]
+        loss_eval_exp_allseen = res_eval[f"Loss_Stream/eval_phase/train_stream/Task000"]
+
+        if log_wandb:
+            wandb.log({"experience/loss_train": loss_train_exp}, step=global_iter)
+            wandb.log({"experience/loss_exp": loss_eval_exp}, step=global_iter)
+            wandb.log({"experience/loss_exp_allseen": loss_eval_exp_allseen}, step=global_iter)
+
+        # compute per-department loss for all seen experiences
+        loss_per_dep = [[] for i in params["dept_ids"]]
+        for i in range(exp_id+1):
+            exp_i = benchmark.train_stream[i]
+            main_test_ds_i = copy.copy(exp_i.dataset)
+            for itr_dep, dept_id in enumerate(params["dept_ids"]):
+                dept_indices = torch.where(main_test_ds_i[:][3] == dept_id)
+                subexp_ds = AvalancheSubset(main_test_ds_i, indices=dept_indices[0])
+                if len(subexp_ds) > 0:
+                    exp_i.dataset = subexp_ds
+                    res = strategy.eval(exp_i)
+                    loss_dept_i = res[f"Loss_Exp/eval_phase/train_stream/Task000/Exp{i:03d}"]
+                else:
+                    loss_dept_i = None
+                loss_per_dep[itr_dep].append(loss_dept_i)
+
+        if log_wandb:
+            for itr_dep, dept_id in enumerate(params["dept_ids"]):
+                dep_losses = loss_per_dep[itr_dep]
+                if dep_losses[-1] != None:
+                    wandb.log({f"dept/loss_dept{dept_id}": dep_losses[-1]}, step=global_iter)
+                dep_losses = [l for l in dep_losses if l != None]
+                if len(dep_losses) > 0:
+                    wandb.log({f"dept/loss_dept{dept_id}_avg": np.mean(dep_losses)}, step=global_iter)
+
+        torch.save(strategy.model.state_dict(), os.path.join(output_path, f"ckpt_{exp_id}.pt"))
+        global_iter += 1
+
+    if log_wandb:
+        wandb.finish()
 
 
 # define main function
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser(description='deepNadim Experiments')
 
     # experiment parameter
     parser.add_argument('--seed', help='', nargs='?', type=int, default=1234)
-    parser.add_argument('--base_dir', help='', nargs='?', type=str, default='././200_experiments/01_baselines/001_experiment_track')
+    parser.add_argument('--base_dir', help='', nargs='?', type=str, default='./200_experiments/01_baselines/001_experiment_track')
 
     # dataset and data loading parameter
     parser.add_argument('--dataset', help='', nargs='?', type=str, default='philadelphia') # chicago, philadelphia
@@ -179,8 +285,11 @@ if __name__ == "__main__":
 
     # new
     parser.add_argument('--strategy', help='', nargs='?', type=str, default='Naive')
-    parser.add_argument('--wandb_proj', help='', nargs='?', type=str, default='ContinualAnomaly')
+    parser.add_argument('--wandb_proj', help='', nargs='?', type=str, default='')
     parser.add_argument('--n_exp', help='', nargs='?', type=int, default=10)
+
+    parser.add_argument('--params_path', help='', nargs='?', type=str, default='params/params.yml')
+    parser.add_argument('--outputs_path', help='', nargs='?', type=str, default='./outputs')
 
     # parse script arguments
     args = parser.parse_args()
