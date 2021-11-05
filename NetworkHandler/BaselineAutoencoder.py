@@ -14,7 +14,7 @@ class BaselineAutoencoder(nn.Module):
 
         # call super class constructor
         super(BaselineAutoencoder, self).__init__()
-
+        
         # init the encoder model
         self.encoder = Encoder.Encoder(hidden_size=encoder_layers, bottleneck=encoder_bottleneck)
 
@@ -22,7 +22,7 @@ class BaselineAutoencoder(nn.Module):
         self.decoder = Decoder.Decoder(hidden_size=decoder_layers)
 
     # define autoencoder model forward pass
-    def forward(self, input):
+    def forward(self, input, return_z=False):
 
         # run encoder forward pass
         z = self.encoder(input)
@@ -31,4 +31,7 @@ class BaselineAutoencoder(nn.Module):
         output = self.decoder(z)
 
         # return latent representation and output
-        return z, output
+        if return_z:
+            return z, output
+        else:
+            return output

@@ -18,7 +18,7 @@ import wandb
 import time
 
 from avalanche.benchmarks.generators import ni_benchmark
-from avalanche.training.strategies import Naive, EWC
+from avalanche.training.strategies import Naive, EWC, LwF, SynapticIntelligence
 from avalanche.evaluation.metrics import loss_metrics
 from avalanche.training.plugins import EvaluationPlugin, ReplayPlugin
 from avalanche.logging import InteractiveLogger, WandBLogger
@@ -55,14 +55,6 @@ def get_model(experiment_parameter, transactions_encoded):
     return model
 
 
-def ae_criterion(out, target):
-    """ Criterion function for the autoencoder model. It splits the out to z, pred
-        correspondingly and then computes the binary cross-entropy loss.
-    """
-    _, pred = out
-    return torch.nn.BCELoss()(pred, target)
-
-
 def get_exp_assignment(params, payment_ds):
     """ Creates index assignment for each experiment according to the percentage of
     data specified for each dept. id
@@ -93,13 +85,9 @@ def get_exp_assignment(params, payment_ds):
     return exp_assignments
 
 
-def get_strategy(experiment_parameters, payment_ds, args):
+def get_strategy(experiment_parameters, payment_ds):
     # initialize evaluator for metrics and loggers
     interactive_logger = InteractiveLogger()
-
-    # run_name = experiment_parameters["strategy"] + "_nexp" + str(experiment_parameters["n_exp"])
-    # wandb_logger = WandBLogger(project_name="ContinualAnomaly", run_name=run_name, config=args)
-
     eval_plugin = EvaluationPlugin(
         loss_metrics(minibatch=True, epoch=True, experience=True, stream=True),
         loggers=[interactive_logger]
@@ -117,7 +105,7 @@ def get_strategy(experiment_parameters, payment_ds, args):
     if experiment_parameters["strategy"] == "Naive":
         strategy = Naive(model=model,
                          optimizer=optimizer,
-                         criterion=ae_criterion,
+                         criterion=torch.nn.BCELoss(),
                          train_mb_size=experiment_parameters["batch_size"],
                          train_epochs=experiment_parameters["no_epochs"],
                          evaluator=eval_plugin,
@@ -126,18 +114,40 @@ def get_strategy(experiment_parameters, payment_ds, args):
     elif experiment_parameters["strategy"] == "EWC":
         strategy = EWC(model=model,
                        optimizer=optimizer,
-                       criterion=ae_criterion,
-                       ewc_lambda=500,
+                       criterion=torch.nn.BCELoss(),
+                       ewc_lambda=experiment_parameters["ewc_lambda"],
+                       train_mb_size=experiment_parameters["batch_size"],
+                       train_epochs=experiment_parameters["no_epochs"],
+                       evaluator=eval_plugin,
+                       device=device)
+
+    elif experiment_parameters["strategy"] == "LwF":
+        strategy = LwF(model=model,
+                       optimizer=optimizer,
+                       criterion=torch.nn.BCELoss(),
+                       alpha=experiment_parameters["lwf_alpha"],
+                       temperature=experiment_parameters["lwf_temperature"],
+                       train_mb_size=experiment_parameters["batch_size"],
+                       train_epochs=experiment_parameters["no_epochs"],
+                       evaluator=eval_plugin,
+                       device=device)
+
+    elif experiment_parameters["strategy"] == "SynapticIntelligence":
+        strategy = SynapticIntelligence(model=model,
+                       optimizer=optimizer,
+                       criterion=torch.nn.BCELoss(),
+                       si_lambda=experiment_parameters["si_lambda"],
+                       eps=experiment_parameters["si_eps"],
                        train_mb_size=experiment_parameters["batch_size"],
                        train_epochs=experiment_parameters["no_epochs"],
                        evaluator=eval_plugin,
                        device=device)
 
     elif experiment_parameters["strategy"] == "Replay":
-        replay_plugin = ReplayPlugin(mem_size=500)
+        replay_plugin = ReplayPlugin(mem_size=experiment_parameters["replay_mem_size"])
         strategy = Naive(model=model,
                          optimizer=optimizer,
-                         criterion=ae_criterion,
+                         criterion=torch.nn.BCELoss(),
                          train_mb_size=experiment_parameters["batch_size"],
                          train_epochs=experiment_parameters["no_epochs"],
                          evaluator=eval_plugin,
@@ -167,7 +177,7 @@ def main(experiment_parameters, args):
                              fixed_exp_assignment=exp_assignments)
 
     # get strategy
-    strategy = get_strategy(experiment_parameters, payment_ds, args)
+    strategy = get_strategy(experiment_parameters, payment_ds)
 
     # initialize WandB
     run_name = experiment_parameters["strategy"] + "_nexp" + str(params["n_experiments"])
@@ -180,9 +190,9 @@ def main(experiment_parameters, args):
             id=run_name)
         wandb.run.name = run_name
 
-    # create folder for the current experiment
-    output_path = os.path.join(args.outputs_path, run_name)
-    os.makedirs(output_path, exist_ok=True)
+        # create folder for the current experiment
+        output_path = os.path.join(args.outputs_path, run_name)
+        os.makedirs(output_path, exist_ok=True)
 
     global_iter = 0
     # iterate through all experiences (tasks) and train the model over each experience
@@ -225,7 +235,8 @@ def main(experiment_parameters, args):
                 if len(dep_losses) > 0:
                     wandb.log({f"dept/loss_dept{dept_id}_avg": np.mean(dep_losses)}, step=global_iter)
 
-        torch.save(strategy.model.state_dict(), os.path.join(output_path, f"ckpt_{exp_id}.pt"))
+            torch.save(strategy.model.state_dict(), os.path.join(output_path, f"ckpt_{exp_id}.pt"))
+
         global_iter += 1
 
     if log_wandb:
@@ -290,6 +301,24 @@ if __name__ == "__main__":
 
     parser.add_argument('--params_path', help='', nargs='?', type=str, default='params/params.yml')
     parser.add_argument('--outputs_path', help='', nargs='?', type=str, default='./outputs')
+
+    # ==========
+    # ========== Strategies
+    # ==========
+    # Replay
+    parser.add_argument('--replay_mem_size', help='', nargs='?', type=int, default=500)  # 238894
+
+    # lwf
+    parser.add_argument('--lwf_alpha', help='', nargs='?', type=float, default=1.00)  # 238894
+    parser.add_argument('--lwf_temperature', help='', nargs='?', type=float, default=1.00)  # 238894
+
+    # ewc
+    parser.add_argument('--ewc_lambda', help='', nargs='?', type=float, default=1.00)
+
+    # synaptic intelligence
+    parser.add_argument('--si_lambda', help='', nargs='?', type=float, default=1.00)
+    parser.add_argument('--si_eps', help='', nargs='?', type=float, default=0.001)
+
 
     # parse script arguments
     args = parser.parse_args()
