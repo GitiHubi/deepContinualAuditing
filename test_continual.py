@@ -127,7 +127,7 @@ def main(experiment_parameters, args):
         for dept_id in params["dept_ids"]:
             dept_indices = torch.where(main_test_ds_i[:][3] == dept_id)
             subexp_ds = AvalancheSubset(main_test_ds_i, indices=dept_indices[0])
-            embs = model(subexp_ds[:][0])[0].detach()
+            embs = model(subexp_ds[:][0], return_z=True)[0].detach()
             all_embs.append(embs)
             all_labels.extend([f'dep {dept_id}']*embs.shape[0])
 

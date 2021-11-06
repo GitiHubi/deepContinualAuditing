@@ -10,21 +10,17 @@ print("NUMBER OF THREADS ARE LIMITED NOW ...")
 
 # imports
 import argparse
-from scipy.special import softmax
 import numpy as np
 import torch
 import yaml
-from random import shuffle
 import wandb
 import time
 
 from avalanche.benchmarks.generators import ni_benchmark
-from avalanche.training.strategies import Naive, EWC, LwF, SynapticIntelligence
+from avalanche.training.strategies import JointTraining
 from avalanche.evaluation.metrics import loss_metrics
-from avalanche.training.plugins import EvaluationPlugin, ReplayPlugin
+from avalanche.training.plugins import EvaluationPlugin
 from avalanche.logging import InteractiveLogger, WandBLogger
-from avalanche.benchmarks.utils.avalanche_dataset import AvalancheSubset
-import copy
 
 import UtilsHandler.UtilsHandler as UtilsHandler
 from DataHandler.payment_dataset_philadelphia import PaymentDatasetPhiladephia
@@ -56,70 +52,6 @@ def get_model(experiment_parameter, transactions_encoded):
     return model
 
 
-def create_percnt_matrix(dept_ids, dept_percnt):
-    """ Creates a percentage matrix for a list of classes
-        with respect to their change type over time
-        ( a: ascending, d: descending, f: fixed)
-    """
-    dept_percnt_list = []
-    n_depts = len(dept_ids)
-    for i in range(n_depts):
-        if dept_percnt[i] == 'a':
-            x = np.arange(0, n_depts)
-        elif dept_percnt[i] == 'd':
-            x = np.arange(0, n_depts)
-            x = np.flip(x)
-        elif dept_percnt[i] == 'f':
-            x = np.ones(n_depts)
-        else:
-            raise NotImplementedError()
-        x = softmax(x)
-        dept_percnt_list.append(list(x))
-
-    # transpose the matrix
-    dept_percnt_list = np.array(dept_percnt_list).T
-    dept_percnt_list = list(dept_percnt_list)
-    dept_percnt_list = [list(x) for x in dept_percnt_list]
-
-    return dept_percnt_list
-
-
-def get_exp_assignment(params, payment_ds):
-    """ Creates index assignment for each experiment according to the percentage of
-    data specified for each dept. id
-    """
-    dept_ids = params["dept_ids"]
-    create_dept_percnt_matrix = params["create_dept_percnt_matrix"]
-
-    if create_dept_percnt_matrix:
-        data_prcnt = create_percnt_matrix(dept_ids, params["dept_percnt"])
-    else:
-        data_prcnt = params["dept_percnt"]
-
-    n_experiences = len(data_prcnt)
-
-    ds_dep_indices = {d: list(np.where(payment_ds.payment_depts == d)[0]) for d in dept_ids}
-    ds_dep_count = {d: len(ds_dep_indices[d]) for d in ds_dep_indices.keys()}
-
-    # shuffle ds dept. indices
-    _ = [shuffle(ds_dep_indices[d]) for d in ds_dep_indices.keys()]
-
-    exp_assignments = []
-    for exp_id in range(n_experiences):
-        percentages = data_prcnt[exp_id]
-        exp_samples = []
-        for i in range(len(percentages)):
-            dept_i = dept_ids[i]
-            dept_perc_dep_i = percentages[i]
-            n_samples_dept_i = int(dept_perc_dep_i * ds_dep_count[dept_i])
-            sampels_i = ds_dep_indices[dept_i][:n_samples_dept_i]
-            ds_dep_indices[dept_i] = ds_dep_indices[dept_i][n_samples_dept_i:]
-            exp_samples.extend(sampels_i)
-        exp_assignments.append(exp_samples)
-
-    return exp_assignments
-
-
 def get_strategy(experiment_parameters, payment_ds):
     # initialize evaluator for metrics and loggers
     interactive_logger = InteractiveLogger()
@@ -137,58 +69,14 @@ def get_strategy(experiment_parameters, payment_ds):
                                  weight_decay=experiment_parameter['weight_decay'])
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if experiment_parameters["strategy"] == "Naive":
-        strategy = Naive(model=model,
+    if experiment_parameters["strategy"] == "JointTraining":
+        strategy = JointTraining(model=model,
                          optimizer=optimizer,
                          criterion=torch.nn.BCELoss(),
                          train_mb_size=experiment_parameters["batch_size"],
                          train_epochs=experiment_parameters["no_epochs"],
                          evaluator=eval_plugin,
                          device=device)
-
-    elif experiment_parameters["strategy"] == "EWC":
-        strategy = EWC(model=model,
-                       optimizer=optimizer,
-                       criterion=torch.nn.BCELoss(),
-                       ewc_lambda=experiment_parameters["ewc_lambda"],
-                       train_mb_size=experiment_parameters["batch_size"],
-                       train_epochs=experiment_parameters["no_epochs"],
-                       evaluator=eval_plugin,
-                       device=device)
-
-    elif experiment_parameters["strategy"] == "LwF":
-        strategy = LwF(model=model,
-                       optimizer=optimizer,
-                       criterion=torch.nn.BCELoss(),
-                       alpha=experiment_parameters["lwf_alpha"],
-                       temperature=experiment_parameters["lwf_temperature"],
-                       train_mb_size=experiment_parameters["batch_size"],
-                       train_epochs=experiment_parameters["no_epochs"],
-                       evaluator=eval_plugin,
-                       device=device)
-
-    elif experiment_parameters["strategy"] == "SynapticIntelligence":
-        strategy = SynapticIntelligence(model=model,
-                       optimizer=optimizer,
-                       criterion=torch.nn.BCELoss(),
-                       si_lambda=experiment_parameters["si_lambda"],
-                       eps=experiment_parameters["si_eps"],
-                       train_mb_size=experiment_parameters["batch_size"],
-                       train_epochs=experiment_parameters["no_epochs"],
-                       evaluator=eval_plugin,
-                       device=device)
-
-    elif experiment_parameters["strategy"] == "Replay":
-        replay_plugin = ReplayPlugin(mem_size=experiment_parameters["replay_mem_size"])
-        strategy = Naive(model=model,
-                         optimizer=optimizer,
-                         criterion=torch.nn.BCELoss(),
-                         train_mb_size=experiment_parameters["batch_size"],
-                         train_epochs=experiment_parameters["no_epochs"],
-                         evaluator=eval_plugin,
-                         plugins=[replay_plugin],
-                         device=device)
-
     else:
         raise NotImplementedError()
 
@@ -205,11 +93,9 @@ def main(experiment_parameters, args):
 
     # create an instance-incremental benchmark by which new samples become available over time
     params = load_params(experiment_parameters["params_path"])
-    exp_assignments = get_exp_assignment(params, payment_ds)
     benchmark = ni_benchmark(payment_ds,
                              payment_ds,
-                             n_experiences=params["n_experiments"],
-                             fixed_exp_assignment=exp_assignments)
+                             n_experiences=params["n_experiments"])
 
     # get strategy
     strategy = get_strategy(experiment_parameters, payment_ds)
@@ -230,51 +116,26 @@ def main(experiment_parameters, args):
         os.makedirs(output_path, exist_ok=True)
 
     global_iter = 0
-    # iterate through all experiences (tasks) and train the model over each experience
-    for exp_id, exp in enumerate(benchmark.train_stream):
-        res_train = strategy.train(exp)
-        loss_train_exp = res_train[f"Loss_Epoch/train_phase/train_stream/Task000"]
 
-        # eval loss for the current experiment
-        res_eval = strategy.eval(benchmark.train_stream[:exp_id+1])
-        loss_eval_exp = res_eval[f"Loss_Exp/eval_phase/train_stream/Task000/Exp{exp_id:03d}"]
-        loss_eval_exp_allseen = res_eval[f"Loss_Stream/eval_phase/train_stream/Task000"]
-
-        if log_wandb:
-            wandb.log({"experience/loss_train": loss_train_exp}, step=global_iter)
-            wandb.log({"experience/loss_exp": loss_eval_exp}, step=global_iter)
-            wandb.log({"experience/loss_exp_allseen": loss_eval_exp_allseen}, step=global_iter)
-
-        # compute per-department loss for all seen experiences
-        loss_per_dep = [[] for i in params["dept_ids"]]
-        for i in range(exp_id+1):
-            exp_i = benchmark.train_stream[i]
-            main_test_ds_i = copy.copy(exp_i.dataset)
-            for itr_dep, dept_id in enumerate(params["dept_ids"]):
-                dept_indices = torch.where(main_test_ds_i[:][3] == dept_id)
-                subexp_ds = AvalancheSubset(main_test_ds_i, indices=dept_indices[0])
-                if len(subexp_ds) > 0:
-                    exp_i.dataset = subexp_ds
-                    res = strategy.eval(exp_i)
-                    loss_dept_i = res[f"Loss_Exp/eval_phase/train_stream/Task000/Exp{i:03d}"]
-                else:
-                    loss_dept_i = None
-                loss_per_dep[itr_dep].append(loss_dept_i)
-
-        if log_wandb:
-            for itr_dep, dept_id in enumerate(params["dept_ids"]):
-                dep_losses = loss_per_dep[itr_dep]
-                if dep_losses[-1] != None:
-                    wandb.log({f"dept/loss_dept{dept_id}": dep_losses[-1]}, step=global_iter)
-                dep_losses = [l for l in dep_losses if l != None]
-                if len(dep_losses) > 0:
-                    wandb.log({f"dept/loss_dept{dept_id}_avg": np.mean(dep_losses)}, step=global_iter)
-
-            torch.save(strategy.model.state_dict(), os.path.join(output_path, f"ckpt_{exp_id}.pt"))
-
-        global_iter += 1
+    # joint train on all experiences
+    res_train = strategy.train(benchmark.train_stream)
+    loss_train_exp = res_train[f"Loss_Epoch/train_phase/train_stream/Task000"]
 
     if log_wandb:
+        wandb.log({"experience/loss_train": loss_train_exp}, step=global_iter)
+
+    # eval loss for all experiences
+    res_eval = strategy.eval(benchmark.train_stream)
+    for exp_id in range(len(benchmark.train_stream)):
+        loss_eval_exp = res_eval[f"Loss_Exp/eval_phase/train_stream/Task000/Exp{exp_id:03d}"]
+        if log_wandb:
+            wandb.log({f"experience/loss_exp_{exp_id}": loss_eval_exp}, step=global_iter)
+
+    # compute average loss on all experiences and save the checkpoint
+    loss_eval_exp_allseen = res_eval[f"Loss_Stream/eval_phase/train_stream/Task000"]
+    if log_wandb:
+        wandb.log({"experience/loss_exp_allseen": loss_eval_exp_allseen}, step=global_iter)
+        torch.save(strategy.model.state_dict(), os.path.join(output_path, f"ckpt_0.pt"))
         wandb.finish()
 
 
@@ -336,23 +197,6 @@ if __name__ == "__main__":
 
     parser.add_argument('--params_path', help='', nargs='?', type=str, default='params/params.yml')
     parser.add_argument('--outputs_path', help='', nargs='?', type=str, default='./outputs')
-
-    # ==========
-    # ========== Strategies
-    # ==========
-    # Replay
-    parser.add_argument('--replay_mem_size', help='', nargs='?', type=int, default=500)  # 238894
-
-    # lwf
-    parser.add_argument('--lwf_alpha', help='', nargs='?', type=float, default=1.00)  # 238894
-    parser.add_argument('--lwf_temperature', help='', nargs='?', type=float, default=1.00)  # 238894
-
-    # ewc
-    parser.add_argument('--ewc_lambda', help='', nargs='?', type=float, default=1.00)
-
-    # synaptic intelligence
-    parser.add_argument('--si_lambda', help='', nargs='?', type=float, default=1.00)
-    parser.add_argument('--si_eps', help='', nargs='?', type=float, default=0.001)
 
 
     # parse script arguments
