@@ -56,7 +56,7 @@ def get_model(experiment_parameter, transactions_encoded):
     return model
 
 
-def create_percnt_matrix(dept_ids, dept_percnt):
+def create_percnt_matrix(dept_ids, dept_percnt, n_experiments):
     """ Creates a percentage matrix for a list of classes
         with respect to their change type over time
         ( a: ascending, d: descending, f: fixed)
@@ -64,22 +64,29 @@ def create_percnt_matrix(dept_ids, dept_percnt):
     dept_percnt_list = []
     n_depts = len(dept_ids)
     for i in range(n_depts):
-        if dept_percnt[i] == 'a':
-            x = np.arange(0, n_depts)
-        elif dept_percnt[i] == 'd':
-            x = np.arange(0, n_depts)
-            x = np.flip(x)
-        elif dept_percnt[i] == 'f':
-            x = np.ones(n_depts)
+        if dept_percnt[i] == 'z':
+            x = np.zeros(n_experiments)
         else:
-            raise NotImplementedError()
-        x = softmax(x)
+            if dept_percnt[i] == 'a':
+                x = np.arange(0, n_experiments)
+            elif dept_percnt[i] == 'd':
+                x = np.arange(0, n_experiments)
+                x = np.flip(x)
+            elif dept_percnt[i] == 'f':
+                x = np.ones(n_experiments)
+            else:
+                raise NotImplementedError()
+            x = softmax(x)
         dept_percnt_list.append(list(x))
 
     # transpose the matrix
     dept_percnt_list = np.array(dept_percnt_list).T
     dept_percnt_list = list(dept_percnt_list)
     dept_percnt_list = [list(x) for x in dept_percnt_list]
+
+    # manually set
+    dept_percnt_list[-1][-1] = 1.0
+    dept_percnt_list[-1][-2] = 1.0
 
     return dept_percnt_list
 
@@ -92,7 +99,7 @@ def get_exp_assignment(params, payment_ds):
     create_dept_percnt_matrix = params["create_dept_percnt_matrix"]
 
     if create_dept_percnt_matrix:
-        data_prcnt = create_percnt_matrix(dept_ids, params["dept_percnt"])
+        data_prcnt = create_percnt_matrix(dept_ids, params["dept_percnt"], params["n_experiments"])
     else:
         data_prcnt = params["dept_percnt"]
 

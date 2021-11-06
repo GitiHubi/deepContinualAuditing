@@ -36,7 +36,7 @@ class PaymentDatasetPhiladephia(data.Dataset):
         # convert to numpy array of floats
         transactions_encoded = transactions_encoded.to_numpy().astype(np.float32)
         transactions_encoded_ids = transactions_encoded_ids.to_numpy().astype(np.float32)
-        transactions_encoded_depts = transactions_encoded_depts.to_numpy().astype(np.float32)
+        transactions_encoded_depts = transactions_encoded_depts.to_numpy()#.astype(np.float32)
 
         # return transactions and encoded transactions
         return transactions_encoded, transactions_encoded_ids, transactions_encoded_depts
