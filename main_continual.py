@@ -56,27 +56,26 @@ def get_model(experiment_parameter, transactions_encoded):
     return model
 
 
-def create_percnt_matrix(dept_ids, dept_percnt, n_experiments):
+def create_percnt_matrix(dept_ids, params):
     """ Creates a percentage matrix for a list of classes
         with respect to their change type over time
         ( a: ascending, d: descending, f: fixed)
     """
+    dept_percnt, n_experiments =  params["dept_percnt"], params["n_experiments"]
+
     dept_percnt_list = []
     n_depts = len(dept_ids)
     for i in range(n_depts):
         if dept_percnt[i] == 'z':
-            x = np.zeros(n_experiments)
+            x = np.array(params["percent_type_z"])
+        elif dept_percnt[i] == 'a':
+            x = np.array(params["percent_type_a"])
+        elif dept_percnt[i] == 'd':
+            x = np.array(params["percent_type_d"])
+        elif dept_percnt[i] == 'f':
+            x = np.array(params["percent_type_f"])
         else:
-            if dept_percnt[i] == 'a':
-                x = np.arange(0, n_experiments)
-            elif dept_percnt[i] == 'd':
-                x = np.arange(0, n_experiments)
-                x = np.flip(x)
-            elif dept_percnt[i] == 'f':
-                x = np.ones(n_experiments)
-            else:
-                raise NotImplementedError()
-            x = softmax(x)
+            raise NotImplementedError()
         dept_percnt_list.append(list(x))
 
     # transpose the matrix
@@ -99,7 +98,7 @@ def get_exp_assignment(params, payment_ds):
     create_dept_percnt_matrix = params["create_dept_percnt_matrix"]
 
     if create_dept_percnt_matrix:
-        data_prcnt = create_percnt_matrix(dept_ids, params["dept_percnt"], params["n_experiments"])
+        data_prcnt = create_percnt_matrix(dept_ids, params)
     else:
         data_prcnt = params["dept_percnt"]
 
@@ -222,7 +221,7 @@ def main(experiment_parameters, args):
     strategy = get_strategy(experiment_parameters, payment_ds)
 
     # initialize WandB
-    run_name = experiment_parameters["strategy"] + "_nexp" + str(params["n_experiments"])
+    run_name = params["scenario"] + "_nexp" + str(params["n_experiments"]) + "_" + experiment_parameters["strategy"]
     run_name += "_" + time.strftime("%Y%m%d%H%M%S")
     log_wandb = args.wandb_proj != ''
     if log_wandb:
@@ -339,7 +338,6 @@ if __name__ == "__main__":
     # new
     parser.add_argument('--strategy', help='', nargs='?', type=str, default='Naive')
     parser.add_argument('--wandb_proj', help='', nargs='?', type=str, default='')
-    parser.add_argument('--n_exp', help='', nargs='?', type=int, default=10)
 
     parser.add_argument('--params_path', help='', nargs='?', type=str, default='params/params.yml')
     parser.add_argument('--outputs_path', help='', nargs='?', type=str, default='./outputs')
