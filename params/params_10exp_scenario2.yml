@@ -15,4 +15,4 @@ percent_type_f: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
 percent_type_z: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
 #   dept ids:  10,   11,   12,   14,   22,   23,   25,   28,   42,   52  1000  2000
-dept_percnt: [ 'd',  'f',  'f',  'a',   'f' , 'f', 'f',  'f',  'f',  'f', 'z', 'z']  # a: ascending, d: descending, f: fixed
+dept_percnt: [ 'd',  'f',  'f',  'f',   'f' , 'f', 'f',  'f',  'f',  'f', 'z', 'z']  # a: ascending, d: descending, f: fixed
