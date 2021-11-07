@@ -222,6 +222,9 @@ def main(experiment_parameters, args):
 
     # initialize WandB
     run_name = params["scenario"] + "_nexp" + str(params["n_experiments"]) + "_" + experiment_parameters["strategy"]
+    if params["train_only_on_last_experience"]:
+        run_name += "_ONLYFINALEXP"
+
     run_name += "_" + time.strftime("%Y%m%d%H%M%S")
     log_wandb = args.wandb_proj != ''
     if log_wandb:
@@ -238,6 +241,9 @@ def main(experiment_parameters, args):
     global_iter = 0
     # iterate through all experiences (tasks) and train the model over each experience
     for exp_id, exp in enumerate(benchmark.train_stream):
+        # skip for N-1 experiences
+        if params["train_only_on_last_experience"] == True and exp_id < len(benchmark.train_stream)-1:
+            continue
         res_train = strategy.train(exp)
         loss_train_exp = res_train[f"Loss_Epoch/train_phase/train_stream/Task000"]
 

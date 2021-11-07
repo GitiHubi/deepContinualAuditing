@@ -101,7 +101,7 @@ def main(experiment_parameters, args):
     strategy = get_strategy(experiment_parameters, payment_ds)
 
     # initialize WandB
-    run_name = experiment_parameters["strategy"] + "_nexp" + str(params["n_experiments"])
+    run_name = params["scenario"] + "_nexp" + str(params["n_experiments"]) + "_" + experiment_parameters["strategy"]
     run_name += "_" + time.strftime("%Y%m%d%H%M%S")
     log_wandb = args.wandb_proj != ''
     if log_wandb:
