@@ -17,6 +17,7 @@ import yaml
 from random import shuffle
 import wandb
 import time
+import random
 
 from avalanche.benchmarks.generators import ni_benchmark
 from avalanche.training.strategies import Naive, EWC, LwF, SynapticIntelligence
@@ -56,32 +57,54 @@ def get_model(experiment_parameter, transactions_encoded):
     return model
 
 
-def create_percnt_matrix(dept_ids, params):
+def create_percnt_matrix(params):
     """ Creates a percentage matrix for a list of classes
         with respect to their change type over time
         ( a: ascending, d: descending, f: fixed)
     """
-    dept_percnt, n_experiments =  params["dept_percnt"], params["n_experiments"]
+    dept_percnt, n_experiences =  params["dept_percnt"], params["n_experiences"]
 
-    dept_percnt_list = []
-    n_depts = len(dept_ids)
-    for i in range(n_depts):
-        if dept_percnt[i] == 'z':
-            x = np.array(params["percent_type_z"])
-        elif dept_percnt[i] == 'a':
-            x = np.array(params["percent_type_a"])
-        elif dept_percnt[i] == 'd':
-            x = np.array(params["percent_type_d"])
-        elif dept_percnt[i] == 'f':
-            x = np.array(params["percent_type_f"])
-        else:
-            raise NotImplementedError()
-        dept_percnt_list.append(list(x))
+    if params["gradual_data_change"]:
+        dept_percnt_list = []
+        n_depts = len(params["dept_ids"])
+        for i in range(n_depts):
+            if dept_percnt[i] == 'z':
+                x = np.array(params["percent_type_z"])
+            elif dept_percnt[i] == 'a':
+                x = np.array(params["percent_type_a"])
+            elif dept_percnt[i] == 'd':
+                x = np.array(params["percent_type_d"])
+            elif dept_percnt[i] == 'f':
+                x = np.array(params["percent_type_f"])
+            else:
+                raise NotImplementedError()
+            dept_percnt_list.append(list(x))
 
-    # transpose the matrix
-    dept_percnt_list = np.array(dept_percnt_list).T
-    dept_percnt_list = list(dept_percnt_list)
-    dept_percnt_list = [list(x) for x in dept_percnt_list]
+        # transpose the matrix
+        dept_percnt_list = np.array(dept_percnt_list).T
+        dept_percnt_list = list(dept_percnt_list)
+        dept_percnt_list = [list(x) for x in dept_percnt_list]
+    else:
+        dept_percnt_list = []
+        n_depts = len(params["dept_ids"])
+        for i in range(n_depts):
+            if dept_percnt[i] == 'z':
+                x = np.zeros(n_experiences)
+            elif dept_percnt[i] == 'd':
+                x = np.zeros(n_experiences)
+                x[0] = 0.999
+                x[-1] = 0.001
+            elif dept_percnt[i] == 'f':
+                x = np.zeros(n_experiences)
+                x[i] = 1.0
+            else:
+                raise NotImplementedError()
+            dept_percnt_list.append(list(x))
+
+        # transpose the matrix
+        dept_percnt_list = np.array(dept_percnt_list).T
+        dept_percnt_list = list(dept_percnt_list)
+        dept_percnt_list = [list(x) for x in dept_percnt_list]
 
     # manually set
     dept_percnt_list[-1][-1] = 1.0
@@ -94,28 +117,26 @@ def get_exp_assignment(params, payment_ds):
     """ Creates index assignment for each experiment according to the percentage of
     data specified for each dept. id
     """
-    dept_ids = params["dept_ids"]
-    create_dept_percnt_matrix = params["create_dept_percnt_matrix"]
-
-    if create_dept_percnt_matrix:
-        data_prcnt = create_percnt_matrix(dept_ids, params)
-    else:
+    if params["load_pecnt_from_params"]:
         data_prcnt = params["dept_percnt"]
-
+    else:
+        data_prcnt = create_percnt_matrix(params)
     n_experiences = len(data_prcnt)
-
-    ds_dep_indices = {d: list(np.where(payment_ds.payment_depts == d)[0]) for d in dept_ids}
+    ds_dep_indices = {d: list(np.where(payment_ds.payment_depts == d)[0]) for d in params["dept_ids"]}
     ds_dep_count = {d: len(ds_dep_indices[d]) for d in ds_dep_indices.keys()}
 
     # shuffle ds dept. indices
     _ = [shuffle(ds_dep_indices[d]) for d in ds_dep_indices.keys()]
 
-    exp_assignments = []
+    # for each experience set how much data to use from each department
+    exp_assignments = []  # list of lists that determines which sample ids to use in each experience
     for exp_id in range(n_experiences):
         percentages = data_prcnt[exp_id]
         exp_samples = []
+        # for each department compute the number of samples that should be used
+        # and assign random samples to the current experience
         for i in range(len(percentages)):
-            dept_i = dept_ids[i]
+            dept_i = params["dept_ids"][i]
             dept_perc_dep_i = percentages[i]
             n_samples_dept_i = int(dept_perc_dep_i * ds_dep_count[dept_i])
             sampels_i = ds_dep_indices[dept_i][:n_samples_dept_i]
@@ -211,17 +232,24 @@ def main(experiment_parameters, args):
 
     # create an instance-incremental benchmark by which new samples become available over time
     params = load_params(experiment_parameters["params_path"])
+
+    # shuffle dept. IDs for non-anomaly depts
+    # if not params["load_pecnt_from_params"]:
+    non_anomaly_depts = params["dept_ids"][:-2]
+    random.Random(args.dept_seed).shuffle(non_anomaly_depts)
+    params["dept_ids"][:-2] = non_anomaly_depts
+
     exp_assignments = get_exp_assignment(params, payment_ds)
     benchmark = ni_benchmark(payment_ds,
                              payment_ds,
-                             n_experiences=params["n_experiments"],
+                             n_experiences=params["n_experiences"],
                              fixed_exp_assignment=exp_assignments)
 
     # get strategy
     strategy = get_strategy(experiment_parameters, payment_ds)
 
     # initialize WandB
-    run_name = params["scenario"] + "_nexp" + str(params["n_experiments"]) + "_" + experiment_parameters["strategy"]
+    run_name = params["scenario"] + f"_S{args.dept_seed}_nexp" + str(params["n_experiences"]) + "_" + experiment_parameters["strategy"]
     if params["train_only_on_last_experience"]:
         run_name += "_ONLYFINALEXP"
 
@@ -238,11 +266,17 @@ def main(experiment_parameters, args):
         output_path = os.path.join(args.outputs_path, run_name)
         os.makedirs(output_path, exist_ok=True)
 
+        # log dept order
+        dept_table = wandb.Table(columns=[str(i) for i in range(len(params["dept_ids"]))],
+                                 data=[[f"dept_{deptid}" for deptid in params["dept_ids"]]])
+        wandb.log({"Dept. Order": dept_table}, step=0)
+
     global_iter = 0
     # iterate through all experiences (tasks) and train the model over each experience
     for exp_id, exp in enumerate(benchmark.train_stream):
         # skip for N-1 experiences
         if params["train_only_on_last_experience"] == True and exp_id < len(benchmark.train_stream)-1:
+            global_iter += 1
             continue
         res_train = strategy.train(exp)
         loss_train_exp = res_train[f"Loss_Epoch/train_phase/train_stream/Task000"]
@@ -260,6 +294,8 @@ def main(experiment_parameters, args):
         # compute per-department loss for all seen experiences
         loss_per_dep = [[] for i in params["dept_ids"]]
         for i in range(exp_id+1):
+            if params["train_only_on_last_experience"] == True and i < len(benchmark.train_stream) - 1:
+                continue
             exp_i = benchmark.train_stream[i]
             main_test_ds_i = copy.copy(exp_i.dataset)
             for itr_dep, dept_id in enumerate(params["dept_ids"]):
@@ -347,6 +383,10 @@ if __name__ == "__main__":
 
     parser.add_argument('--params_path', help='', nargs='?', type=str, default='params/params.yml')
     parser.add_argument('--outputs_path', help='', nargs='?', type=str, default='./outputs')
+
+
+    # Dept IDS
+    parser.add_argument('--dept_seed', help='', nargs='?', type=int, default=0)  # 238894
 
     # ==========
     # ========== Strategies

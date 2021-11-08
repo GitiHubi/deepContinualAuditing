@@ -15,16 +15,21 @@ import torch
 import yaml
 import wandb
 import time
+import random
 
 from avalanche.benchmarks.generators import ni_benchmark
 from avalanche.training.strategies import JointTraining
 from avalanche.evaluation.metrics import loss_metrics
 from avalanche.training.plugins import EvaluationPlugin
 from avalanche.logging import InteractiveLogger, WandBLogger
+from avalanche.benchmarks.utils.avalanche_dataset import AvalancheSubset
+import copy
 
 import UtilsHandler.UtilsHandler as UtilsHandler
 from DataHandler.payment_dataset_philadelphia import PaymentDatasetPhiladephia
 import NetworkHandler.BaselineAutoencoder as BaselineAutoencoder
+
+from main_continual import get_exp_assignment
 
 
 def load_params(yml_file_path):
@@ -93,15 +98,24 @@ def main(experiment_parameters, args):
 
     # create an instance-incremental benchmark by which new samples become available over time
     params = load_params(experiment_parameters["params_path"])
+
+    # shuffle dept. IDs for non-anomaly depts
+    # if not params["load_pecnt_from_params"]:
+    non_anomaly_depts = params["dept_ids"][:-2]
+    random.Random(args.dept_seed).shuffle(non_anomaly_depts)
+    params["dept_ids"][:-2] = non_anomaly_depts
+
+    exp_assignments = get_exp_assignment(params, payment_ds)
     benchmark = ni_benchmark(payment_ds,
                              payment_ds,
-                             n_experiences=params["n_experiments"])
+                             n_experiences=params["n_experiences"],
+                             fixed_exp_assignment=exp_assignments)
 
     # get strategy
     strategy = get_strategy(experiment_parameters, payment_ds)
 
     # initialize WandB
-    run_name = params["scenario"] + "_nexp" + str(params["n_experiments"]) + "_" + experiment_parameters["strategy"]
+    run_name = params["scenario"] + f"_S{args.dept_seed}_nexp" + str(params["n_experiences"]) + "_" + experiment_parameters["strategy"]
     run_name += "_" + time.strftime("%Y%m%d%H%M%S")
     log_wandb = args.wandb_proj != ''
     if log_wandb:
@@ -115,10 +129,16 @@ def main(experiment_parameters, args):
         output_path = os.path.join(args.outputs_path, run_name)
         os.makedirs(output_path, exist_ok=True)
 
+        # log dept order
+        dept_table = wandb.Table(columns=[str(i) for i in range(len(params["dept_ids"]))],
+                                 data=[[f"dept_{deptid}" for deptid in params["dept_ids"]]])
+        wandb.log({"Dept. Order": dept_table}, step=0)
+
     global_iter = 0
 
     # joint train on all experiences
     res_train = strategy.train(benchmark.train_stream)
+
     loss_train_exp = res_train[f"Loss_Epoch/train_phase/train_stream/Task000"]
 
     if log_wandb:
@@ -130,6 +150,36 @@ def main(experiment_parameters, args):
         loss_eval_exp = res_eval[f"Loss_Exp/eval_phase/train_stream/Task000/Exp{exp_id:03d}"]
         if log_wandb:
             wandb.log({f"experience/loss_exp_{exp_id}": loss_eval_exp}, step=global_iter)
+
+        # Evaluate per-dept loss for the final experience
+        if exp_id == len(benchmark.train_stream) -1:
+            # do per department loss evaluation
+            # compute per-department loss for all seen experiences
+            loss_per_dep = [[] for i in params["dept_ids"]]
+            for i in range(exp_id + 1):
+                if params["train_only_on_last_experience"] == True and i < len(benchmark.train_stream) - 1:
+                    continue
+                exp_i = benchmark.train_stream[i]
+                main_test_ds_i = copy.copy(exp_i.dataset)
+                for itr_dep, dept_id in enumerate(params["dept_ids"]):
+                    dept_indices = torch.where(main_test_ds_i[:][3] == dept_id)
+                    subexp_ds = AvalancheSubset(main_test_ds_i, indices=dept_indices[0])
+                    if len(subexp_ds) > 0:
+                        exp_i.dataset = subexp_ds
+                        res = strategy.eval(exp_i)
+                        loss_dept_i = res[f"Loss_Exp/eval_phase/train_stream/Task000/Exp{i:03d}"]
+                    else:
+                        loss_dept_i = None
+                    loss_per_dep[itr_dep].append(loss_dept_i)
+
+            if log_wandb:
+                for itr_dep, dept_id in enumerate(params["dept_ids"]):
+                    dep_losses = loss_per_dep[itr_dep]
+                    if dep_losses[-1] != None:
+                        wandb.log({f"dept/loss_dept{dept_id}": dep_losses[-1]}, step=global_iter)
+                    dep_losses = [l for l in dep_losses if l != None]
+                    if len(dep_losses) > 0:
+                        wandb.log({f"dept/loss_dept{dept_id}_avg": np.mean(dep_losses)}, step=global_iter)
 
     # compute average loss on all experiences and save the checkpoint
     loss_eval_exp_allseen = res_eval[f"Loss_Stream/eval_phase/train_stream/Task000"]
@@ -198,6 +248,8 @@ if __name__ == "__main__":
     parser.add_argument('--params_path', help='', nargs='?', type=str, default='params/params.yml')
     parser.add_argument('--outputs_path', help='', nargs='?', type=str, default='./outputs')
 
+    # Dept IDS
+    parser.add_argument('--dept_seed', help='', nargs='?', type=int, default=0)  # 238894
 
     # parse script arguments
     args = parser.parse_args()
