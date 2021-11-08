@@ -56,6 +56,32 @@ def get_model(experiment_parameter, transactions_encoded):
     # return autoencoder baseline model
     return model
 
+def ae_criterion(out, target):
+    """ Criterion function for the autoencoder model. It splits the out to z, pred
+        correspondingly and then computes the binary cross-entropy loss.
+    """
+    _, pred = out
+    return torch.nn.BCELoss()(pred, target)
+
+
+def main(experiment_parameters):
+    """ Main function: initializes the dataset and creates benchmark for
+        continual learning. Then, it loops over all experiences and trains/evaluates
+        the model using a defined strategy.
+    """
+    # initialize payment dataset
+    payment_ds = PaymentDatasetPhiladephia(experiment_parameters['data_dir'])
+
+    # create an instance-incremental benchmark by which new samples become available over time
+    benchmark = ni_benchmark(payment_ds, payment_ds, n_experiences=5)
+
+    # initialize model
+    model = get_model(experiment_parameters, payment_ds.payments_encoded)
+
+    # initialize optimizer
+    optimizer = torch.optim.Adam(params=model.parameters(),
+                                 lr=experiment_parameters['learning_rate'],
+                                 weight_decay=experiment_parameters['weight_decay'])
 
 def create_percnt_matrix(params):
     """ Creates a percentage matrix for a list of classes
@@ -325,14 +351,14 @@ def main(experiment_parameters, args):
     if log_wandb:
         wandb.finish()
 
-
 # define main function
 if __name__ == "__main__":
+
     parser = argparse.ArgumentParser(description='deepNadim Experiments')
 
     # experiment parameter
     parser.add_argument('--seed', help='', nargs='?', type=int, default=1234)
-    parser.add_argument('--base_dir', help='', nargs='?', type=str, default='./200_experiments/01_baselines/001_experiment_track')
+
 
     # dataset and data loading parameter
     parser.add_argument('--dataset', help='', nargs='?', type=str, default='philadelphia') # chicago, philadelphia
@@ -377,7 +403,7 @@ if __name__ == "__main__":
     parser.add_argument('--checkpoint_epoch', help='', nargs='?', type=int, default=1)
     parser.add_argument('--checkpoint_save', help='', type=str, default='True')
 
-    # new
+    # parse script arguments
     parser.add_argument('--strategy', help='', nargs='?', type=str, default='Naive')
     parser.add_argument('--wandb_proj', help='', nargs='?', type=str, default='')
 
@@ -441,4 +467,5 @@ if __name__ == "__main__":
 
     # case: baseline autoencoder experiment
     if experiment_parameter['architecture'] == 'baseline':
+
         main(experiment_parameter, args)
