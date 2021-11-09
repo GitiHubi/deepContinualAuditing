@@ -259,11 +259,11 @@ def main(experiment_parameters, args):
     # create an instance-incremental benchmark by which new samples become available over time
     params = load_params(experiment_parameters["params_path"])
 
-    # shuffle dept. IDs for non-anomaly depts
-    # if not params["load_pecnt_from_params"]:
-    non_anomaly_depts = params["dept_ids"][:-2]
-    random.Random(args.dept_seed).shuffle(non_anomaly_depts)
-    params["dept_ids"][:-2] = non_anomaly_depts
+    # shuffle if dept. seed is lte zero
+    if args.dept_seed >= 0:
+        non_anomaly_depts = params["dept_ids"][:-2]
+        random.Random(args.dept_seed).shuffle(non_anomaly_depts)
+        params["dept_ids"][:-2] = non_anomaly_depts
 
     exp_assignments = get_exp_assignment(params, payment_ds)
     benchmark = ni_benchmark(payment_ds,
@@ -412,7 +412,7 @@ if __name__ == "__main__":
 
 
     # Dept IDS
-    parser.add_argument('--dept_seed', help='', nargs='?', type=int, default=0)  # 238894
+    parser.add_argument('--dept_seed', help='', nargs='?', type=int, default=-1)
 
     # ==========
     # ========== Strategies
