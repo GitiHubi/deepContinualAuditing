@@ -368,13 +368,14 @@ if __name__ == "__main__":
     # encoder architecture parameter
     parser.add_argument('--architecture', help='', nargs='?', type=str, default='baseline')
     parser.add_argument('--bottleneck', help='', nargs='?', type=str, default='linear')  ## lrelu, tanh, linear
+    parser.add_argument('--architecture_size', help='', nargs='?', type=str, default='small')
 
     # architecture parameter
     #parser.add_argument('--encoder_dim', help='', nargs='+', default=[4096, 2048, 1024, 512, 256, 128, 64, 32, 16, 8, 4, 2])
     #parser.add_argument('--decoder_dim', help='', nargs='+', default=[2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096])
 
-    parser.add_argument('--encoder_dim', help='', nargs='+', default=[128, 64, 32, 16, 8, 4, 2])
-    parser.add_argument('--decoder_dim', help='', nargs='+', default=[2, 4, 8, 16, 32, 64, 128])
+    # parser.add_argument('--encoder_dim', help='', nargs='+', default=[128, 64, 32, 16, 8, 4, 2])
+    # parser.add_argument('--decoder_dim', help='', nargs='+', default=[2, 4, 8, 16, 32, 64, 128])
 
     # training parameter
     parser.add_argument('--batch_size', help='', nargs='?', type=int, default=128)
@@ -462,8 +463,17 @@ if __name__ == "__main__":
     experiment_parameter['wandb_logging'] = uha.str2bool(experiment_parameter['wandb_logging'])
 
     # parse string args as int
-    experiment_parameter['encoder_dim'] = [int(ele) for ele in experiment_parameter['encoder_dim']]
-    experiment_parameter['decoder_dim'] = [int(ele) for ele in experiment_parameter['decoder_dim']]
+    if args.architecture_size == "small":
+        experiment_parameter['encoder_dim'] = [128, 64, 32, 16, 8, 4, 2]
+        experiment_parameter['decoder_dim'] = [2, 4, 8, 16, 32, 64, 128]
+    elif args.architecture_size == "large":
+        experiment_parameter['encoder_dim'] = [4096, 2048, 1024, 512, 256, 128, 64, 32, 16, 8, 4, 2]
+        experiment_parameter['decoder_dim'] = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096]
+    else:
+        raise NotImplementedError
+
+    # experiment_parameter['encoder_dim'] = [int(ele) for ele in experiment_parameter['encoder_dim']]
+    # experiment_parameter['decoder_dim'] = [int(ele) for ele in experiment_parameter['decoder_dim']]
 
     # case: baseline autoencoder experiment
     if experiment_parameter['architecture'] == 'baseline':
