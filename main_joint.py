@@ -101,9 +101,9 @@ def main(experiment_parameters, args):
 
     # shuffle dept. IDs for non-anomaly depts
     # if not params["load_pecnt_from_params"]:
-    non_anomaly_depts = params["dept_ids"][:-2]
-    random.Random(args.dept_seed).shuffle(non_anomaly_depts)
-    params["dept_ids"][:-2] = non_anomaly_depts
+    # non_anomaly_depts = params["dept_ids"][:-2]
+    # random.Random(args.dept_seed).shuffle(non_anomaly_depts)
+    # params["dept_ids"][:-2] = non_anomaly_depts
 
     exp_assignments = get_exp_assignment(params, payment_ds)
     benchmark = ni_benchmark(payment_ds,

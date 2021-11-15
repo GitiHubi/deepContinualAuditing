@@ -27,60 +27,7 @@ import UtilsHandler.UtilsHandler as UtilsHandler
 from DataHandler.payment_dataset_philadelphia import PaymentDatasetPhiladephia
 import NetworkHandler.BaselineAutoencoder as BaselineAutoencoder
 
-
-def load_params(yml_file_path):
-    """ Loads param file and returns a dictionary. """
-    with open(yml_file_path, "r") as yaml_file:
-        params = yaml.safe_load(yaml_file)
-
-    return params
-
-
-def get_model(experiment_parameter, transactions_encoded):
-    # update the encoder and decoder network input dimensionality depending on the training data
-    experiment_parameter['encoder_dim'].insert(0, transactions_encoded.shape[1])
-    experiment_parameter['decoder_dim'].insert(len(experiment_parameter['decoder_dim']),
-                                               transactions_encoded.shape[1])
-
-    # init the baseline autoencoder model
-    model = BaselineAutoencoder.BaselineAutoencoder(
-        encoder_layers=experiment_parameter['encoder_dim'],
-        encoder_bottleneck=experiment_parameter['bottleneck'],
-        decoder_layers=experiment_parameter['decoder_dim']
-    )
-
-    # return autoencoder baseline model
-    return model
-
-
-def get_exp_assignment(params, payment_ds):
-    """ Creates index assignment for each experiment according to the percentage of
-    data specified for each dept. id
-    """
-    dept_ids = params["dept_ids"]
-    data_prcnt = params["dept_percnt"]
-    n_experiences = len(data_prcnt)
-
-    ds_dep_indices = {d: list(np.where(payment_ds.payment_depts == d)[0]) for d in dept_ids}
-    ds_dep_count = {d: len(ds_dep_indices[d]) for d in ds_dep_indices.keys()}
-
-    # shuffle ds dept. indices
-    _ = [shuffle(ds_dep_indices[d]) for d in ds_dep_indices.keys()]
-
-    exp_assignments = []
-    for exp_id in range(n_experiences):
-        percentages = data_prcnt[exp_id]
-        exp_samples = []
-        for i in range(len(percentages)):
-            dept_i = dept_ids[i]
-            dept_perc_dep_i = percentages[i]
-            n_samples_dept_i = int(dept_perc_dep_i * ds_dep_count[dept_i])
-            sampels_i = ds_dep_indices[dept_i][:n_samples_dept_i]
-            ds_dep_indices[dept_i] = ds_dep_indices[dept_i][n_samples_dept_i:]
-            exp_samples.extend(sampels_i)
-        exp_assignments.append(exp_samples)
-
-    return exp_assignments
+from main_continual import load_params, get_exp_assignment, get_model
 
 
 def main(experiment_parameters, args):
@@ -93,13 +40,15 @@ def main(experiment_parameters, args):
 
     # get model
     model = get_model(experiment_parameters, payment_ds.payments_encoded)
+    model.eval()
 
     # create an instance-incremental benchmark by which new samples become available over time
     params = load_params(experiment_parameters["params_path"])
     exp_assignments = get_exp_assignment(params, payment_ds)
     benchmark = ni_benchmark(payment_ds,
                              payment_ds,
-                             n_experiences=params["n_experiments"],)#fixed_exp_assignment=exp_assignments)
+                             n_experiences=params["n_experiences"],
+                             fixed_exp_assignment=exp_assignments)
 
     # initialize WandB
     run_name = args.run_name
@@ -111,7 +60,9 @@ def main(experiment_parameters, args):
     sns.set_theme()
 
     # iterate through all experiences (tasks) and train the model over each experience
-    for exp_id in range(params["n_experiments"]):
+    for exp_id in range(params["n_experiences"]):
+        if exp_id < len(benchmark.train_stream)-1:
+            continue
         ckpt_path = os.path.join(output_path, f"ckpt_{exp_id}.pt")
         model.load_state_dict(torch.load(ckpt_path))
 
@@ -125,7 +76,11 @@ def main(experiment_parameters, args):
         all_embs = []
         all_labels = []
         for dept_id in params["dept_ids"]:
+            if dept_id == 2000:
+                continue
             dept_indices = torch.where(main_test_ds_i[:][3] == dept_id)
+            if dept_indices == 0:
+                continue
             subexp_ds = AvalancheSubset(main_test_ds_i, indices=dept_indices[0])
             embs = model(subexp_ds[:][0], return_z=True)[0].detach()
             all_embs.append(embs)
@@ -148,6 +103,7 @@ if __name__ == "__main__":
     parser.add_argument('--encoder_dim', help='', nargs='+', default=[128, 64, 32, 16, 8, 4, 2])
     parser.add_argument('--decoder_dim', help='', nargs='+', default=[2, 4, 8, 16, 32, 64, 128])
     parser.add_argument('--architecture', help='', nargs='?', type=str, default='baseline')
+    parser.add_argument('--architecture_size', help='', nargs='?', type=str, default='small')
     parser.add_argument('--bottleneck', help='', nargs='?', type=str, default='linear')
     parser.add_argument('--params_path', help='', nargs='?', type=str, default='params/params.yml')
     parser.add_argument('--outputs_path', help='', nargs='?', type=str, default='./outputs')
@@ -160,7 +116,13 @@ if __name__ == "__main__":
     uha = UtilsHandler.UtilsHandler()
 
     # parse string args as int
-    experiment_parameter['encoder_dim'] = [int(ele) for ele in experiment_parameter['encoder_dim']]
-    experiment_parameter['decoder_dim'] = [int(ele) for ele in experiment_parameter['decoder_dim']]
+    if args.architecture_size == "small":
+        experiment_parameter['encoder_dim'] = [128, 64, 32, 16, 8, 4, 2]
+        experiment_parameter['decoder_dim'] = [2, 4, 8, 16, 32, 64, 128]
+    elif args.architecture_size == "large":
+        experiment_parameter['encoder_dim'] = [4096, 2048, 1024, 512, 256, 128, 64, 32, 16, 8, 4, 2]
+        experiment_parameter['decoder_dim'] = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096]
+    else:
+        raise NotImplementedError
 
     main(experiment_parameter, args)
