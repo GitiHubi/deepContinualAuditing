@@ -10,10 +10,7 @@ print("NUMBER OF THREADS ARE LIMITED NOW ...")
 
 # imports
 import argparse
-import numpy as np
 import torch
-import yaml
-from random import shuffle
 import matplotlib
 matplotlib.use("agg")
 from matplotlib import pyplot as plt
@@ -24,8 +21,7 @@ from avalanche.benchmarks.utils.avalanche_dataset import AvalancheSubset
 import copy
 
 import UtilsHandler.UtilsHandler as UtilsHandler
-from DataHandler.payment_dataset_philadelphia import PaymentDatasetPhiladephia
-import NetworkHandler.BaselineAutoencoder as BaselineAutoencoder
+from DataHandler.PaymentDataset import PaymentDatasetPhiladephia
 
 from main_continual import load_params, get_exp_assignment, get_model
 

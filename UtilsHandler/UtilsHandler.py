@@ -1,13 +1,11 @@
-# import class libraries
 import os as os
 import json as js
 import numpy as np
 import pandas as pd
 import argparse
 import torch
-
-from collections import Counter
-from sklearn.metrics.pairwise import euclidean_distances
+import yaml
+import wandb
 from sklearn.metrics import (roc_auc_score, average_precision_score)
 
 
@@ -235,3 +233,32 @@ class UtilsHandler(object):
 
         # return overall, local and global roc-auc scores
         return average_precision_score_all, average_precision_score_global, average_precision_score_local
+
+    #===============================
+    # ======== New Utils ===========
+    #===============================
+
+    def load_params(self, yml_file_path):
+        """ Loads param file and returns a dictionary. """
+        with open(yml_file_path, "r") as yaml_file:
+            params = yaml.safe_load(yaml_file)
+
+        return params
+
+    def init_wandb(self, experiment_parameters, run_name, log_wandb=False):
+        """ Initializes WandB. """
+        if log_wandb:
+            wandb.init(
+                project=experiment_parameters['wandb_proj'],
+                config=experiment_parameters,
+                id=run_name)
+            wandb.run.name = run_name
+
+            # create folder for the current experiment
+            output_path = os.path.join(experiment_parameters['outputs_path'], run_name)
+            os.makedirs(output_path, exist_ok=True)
+
+            # log dept order
+            dept_table = wandb.Table(columns=[str(i) for i in range(len(params["dept_ids"]))],
+                                     data=[[f"dept_{deptid}" for deptid in params["dept_ids"]]])
+            wandb.log({"Dept. Order": dept_table}, step=0)
