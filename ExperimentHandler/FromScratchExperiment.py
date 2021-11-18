@@ -8,6 +8,7 @@ from DataHandler.PaymentDataset import PaymentDataset
 from UtilsHandler.UtilsHandler import UtilsHandler
 from UtilsHandler.StrategyHandler import StrategyHandler
 from UtilsHandler.BenchmarkHandler import BenchmarkHandler
+from UtilsHandler.MetricHandler import MetricHandler
 
 
 def run_fromscratch_experiment(experiment_parameters):
@@ -15,6 +16,7 @@ def run_fromscratch_experiment(experiment_parameters):
     uha = UtilsHandler()
     sha = StrategyHandler()
     bha = BenchmarkHandler()
+    mha = MetricHandler()
 
     # Initialize payment dataset
     payment_ds = PaymentDataset(experiment_parameters['data_dir'])
@@ -75,10 +77,20 @@ def run_fromscratch_experiment(experiment_parameters):
         loss_per_dep[itr_dep].append(loss_dept_i)
 
     # ============================
+    # Compute FPs and FNs in the Final Experience
+    # ============================
+
+    fp_ratio = mha.compute_FP_ratio(strategy, benchmark.train_stream[last_exp_idx].dataset, experiment_parameters)
+    fn_ratio = mha.compute_FN_ratio(strategy, benchmark.train_stream[last_exp_idx].dataset, experiment_parameters)
+
+    # ============================
     #             Log
     # ============================
 
     if log_wandb:
+        wandb.log({"fp_ratio": fp_ratio}, step=last_exp_idx)
+        wandb.log({"fn_ratio": fn_ratio}, step=last_exp_idx)
+
         wandb.log({"experience/loss_train": loss_train_exp}, step=last_exp_idx)
         wandb.log({"experience/loss_exp": loss_eval_exp}, step=last_exp_idx)
         for itr_dep, dept_id in enumerate(experiment_parameters["dept_ids"]):
