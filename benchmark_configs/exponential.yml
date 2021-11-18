@@ -12,7 +12,7 @@ target_dept_ids: [10]
 anomaly_dept_ids: [1000, 2000]
 
 # percentage of samples for the target department in each experience
-target_dept_data_perc:  [1.0, 0.7, 0.5, 0.2, 0.1, 0.07, 0.02, 0.009, 0.006, 0.001]
+target_dept_data_perc:  [1.0, 0.500, 0.250, 0.125, 0.0625, 0.0313, 0.0156, 0.0078, 0.0039, 0.0010]
 
 # percentage of samples for the anomaly department(s) in each experience
 anomaly_dept_data_perc: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
