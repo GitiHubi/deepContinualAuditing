@@ -1,0 +1,18 @@
+
+reduction_type: "instant"
+
+# number of experiences
+n_experiences: 10
+
+# department IDs
+dept_ids: [10, 11, 12, 14, 22, 23, 25, 28, 42, 52, 1000, 2000]
+n_dept_samples_per_exp: 1000 # 10,000 samples in total per department
+min_sampling_perc: 0.9 # minimum sampling percentage for each department at each experience
+target_dept_ids: [10]
+anomaly_dept_ids: [1000, 2000]
+
+# percentage of samples for the target department in each experience
+target_dept_data_perc:  [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.001]
+
+# percentage of samples for the anomaly department(s) in each experience
+anomaly_dept_data_perc: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
