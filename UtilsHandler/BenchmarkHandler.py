@@ -1,5 +1,6 @@
 import numpy as np
-from random import shuffle
+import random
+import copy
 from avalanche.benchmarks.generators import ni_benchmark
 
 
@@ -18,88 +19,70 @@ class BenchmarkHandler(object):
 
     def create_percnt_matrix(self, params):
         """ Creates a percentage matrix for a list of classes
-            with respect to their change type over time
-            ( a: ascending, d: descending, f: fixed)
+            with respect to their reduction type.
         """
-        dept_percnt, n_experiences = params["dept_percnt"], params["n_experiences"]
+        def generate_random_number():
+            min = int(params["min_sampling_perc"]*100)
+            return random.randint(min, 100) / 100.0
 
-        if params["gradual_data_change"]:
-            dept_percnt_list = []
-            n_depts = len(params["dept_ids"])
-            for i in range(n_depts):
-                if dept_percnt[i] == 'z':
-                    x = np.array(params["percent_type_z"])
-                elif dept_percnt[i] == 'a':
-                    x = np.array(params["percent_type_a"])
-                elif dept_percnt[i] == 'd':
-                    x = np.array(params["percent_type_d"])
-                elif dept_percnt[i] == 'f':
-                    x = np.array(params["percent_type_f"])
-                else:
-                    raise NotImplementedError()
-                dept_percnt_list.append(list(x))
+        # Create percentage matrix
+        perc_matrix = []
+        for dept in params["dept_ids"]:
+            if dept in params["target_dept_ids"]:
+                perc_matrix.append(params["target_dept_data_perc"])
+            elif dept in params["anomaly_dept_ids"]:
+                perc_matrix.append(params["anomaly_dept_data_perc"])
+            else:
 
-            # transpose the matrix
-            dept_percnt_list = np.array(dept_percnt_list).T
-            dept_percnt_list = list(dept_percnt_list)
-            dept_percnt_list = [list(x) for x in dept_percnt_list]
-        else:
-            dept_percnt_list = []
-            n_depts = len(params["dept_ids"])
-            for i in range(n_depts):
-                if dept_percnt[i] == 'z':
-                    x = np.zeros(n_experiences)
-                elif dept_percnt[i] == 'd':
-                    x = np.zeros(n_experiences)
-                    x[0] = 0.999
-                    x[-1] = 0.001
-                elif dept_percnt[i] == 'f':
-                    x = np.zeros(n_experiences)
-                    x[i] = 1.0
-                else:
-                    raise NotImplementedError()
-                dept_percnt_list.append(list(x))
+                perc_matrix.append([generate_random_number() for _ in range(params["n_experiences"])])
 
-            # transpose the matrix
-            dept_percnt_list = np.array(dept_percnt_list).T
-            dept_percnt_list = list(dept_percnt_list)
-            dept_percnt_list = [list(x) for x in dept_percnt_list]
+        # Transpose it
+        perc_matrix = np.array(perc_matrix)
+        perc_matrix = perc_matrix.T
+        perc_matrix = list(perc_matrix)
+        perc_matrix = [list(x) for x in perc_matrix]
 
-        # manually set
-        dept_percnt_list[-1][-1] = 1.0
-        dept_percnt_list[-1][-2] = 1.0
+        return perc_matrix
 
-        return dept_percnt_list
-
-    def get_exp_assignment(self, params, payment_ds):
+    def get_exp_assignment(self, params, payment_ds, perc_matrix):
         """ Creates index assignment for each experiment according to the percentage of
         data specified for each dept. id
         """
-        if params["load_pecnt_from_params"]:
-            data_prcnt = params["dept_percnt"]
-        else:
-            data_prcnt = self.create_percnt_matrix(params)
-        n_experiences = len(data_prcnt)
+        n_experiences = params["n_experiences"]
+
+        # create list of sample indices per deptartment
         ds_dep_indices = {d: list(np.where(payment_ds.payment_depts == d)[0]) for d in params["dept_ids"]}
-        ds_dep_count = {d: len(ds_dep_indices[d]) for d in ds_dep_indices.keys()}
 
         # shuffle ds dept. indices
-        _ = [shuffle(ds_dep_indices[d]) for d in ds_dep_indices.keys()]
+        _ = [random.shuffle(ds_dep_indices[d]) for d in ds_dep_indices.keys()]
 
         # for each experience set how much data to use from each department
         exp_assignments = []  # list of lists that determines which sample ids to use in each experience
         for exp_id in range(n_experiences):
-            percentages = data_prcnt[exp_id]
-            exp_samples = []
+            percentages = perc_matrix[exp_id]
+            experience_i_indices = []  # list of experience indices
+
             # for each department compute the number of samples that should be used
             # and assign random samples to the current experience
-            for i in range(len(percentages)):
-                dept_i = params["dept_ids"][i]
-                dept_perc_dep_i = percentages[i]
-                n_samples_dept_i = int(dept_perc_dep_i * ds_dep_count[dept_i])
-                sampels_i = ds_dep_indices[dept_i][:n_samples_dept_i]
-                ds_dep_indices[dept_i] = ds_dep_indices[dept_i][n_samples_dept_i:]
-                exp_samples.extend(sampels_i)
-            exp_assignments.append(exp_samples)
+            for i, dept_id in enumerate(params["dept_ids"]):
+                dept_i_perc = percentages[i]
+                # if anomaly:
+                if dept_id in params["anomaly_dept_ids"]:
+                    # for anomaly departments only add in the final experience
+                    if exp_id < n_experiences - 1:
+                        continue
+                    dept_i_indices = copy.copy(ds_dep_indices[dept_id][:])
+                    subset_max_idx = int(dept_i_perc * len(dept_i_indices))
+                    experience_i_indices.extend(dept_i_indices[:subset_max_idx])
+
+                # otherwise:
+                else:
+                    start = exp_id * params["n_dept_samples_per_exp"]
+                    end = (exp_id+1) * params["n_dept_samples_per_exp"]
+                    dept_i_indices = copy.copy(ds_dep_indices[dept_id][start:end])
+                    subset_max_idx = int(dept_i_perc * len(dept_i_indices))
+                    experience_i_indices.extend(dept_i_indices[:subset_max_idx])
+
+            exp_assignments.append(experience_i_indices)
 
         return exp_assignments
