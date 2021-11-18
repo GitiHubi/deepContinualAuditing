@@ -257,8 +257,3 @@ class UtilsHandler(object):
             # create folder for the current experiment
             output_path = os.path.join(experiment_parameters['outputs_path'], run_name)
             os.makedirs(output_path, exist_ok=True)
-
-            # log dept order
-            dept_table = wandb.Table(columns=[str(i) for i in range(len(params["dept_ids"]))],
-                                     data=[[f"dept_{deptid}" for deptid in params["dept_ids"]]])
-            wandb.log({"Dept. Order": dept_table}, step=0)

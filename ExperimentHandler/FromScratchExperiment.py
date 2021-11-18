@@ -20,7 +20,8 @@ def run_fromscratch_experiment(experiment_parameters):
     payment_ds = PaymentDataset(experiment_parameters['data_dir'])
 
     # Get index assignments for all experiences
-    exp_assignments = bha.get_exp_assignment(experiment_parameters, payment_ds)
+    perc_matrix = bha.create_percnt_matrix(experiment_parameters)
+    exp_assignments = bha.get_exp_assignment(experiment_parameters, payment_ds, perc_matrix)
 
     # Get benchmark
     benchmark = bha.get_benchmark(experiment_parameters, payment_ds, exp_assignments)
@@ -33,6 +34,12 @@ def run_fromscratch_experiment(experiment_parameters):
     log_wandb = experiment_parameters['wandb_proj'] != ''
     uha.init_wandb(experiment_parameters, run_name, log_wandb)
     output_path = os.path.join(experiment_parameters['outputs_path'], run_name)
+
+    # Log data percentage matrix
+    if log_wandb:
+        data_perc_table = wandb.Table(columns=[f"{dept_id}" for dept_id in experiment_parameters["dept_ids"]],
+                                      data=perc_matrix)
+        wandb.log({"Data Percentage Matrix": data_perc_table}, step=0)
 
     # Get index of the last experience
     last_exp_idx = len(benchmark.train_stream) - 1
@@ -79,5 +86,5 @@ def run_fromscratch_experiment(experiment_parameters):
             if dep_losses[-1] != None:
                 wandb.log({f"dept/loss_dept{dept_id}": dep_losses[-1]}, step=last_exp_idx)
 
-        torch.save(strategy.model.state_dict(), os.path.join(output_path, f"ckpt_{last_exp_idx}.pt"))
+        torch.save(strategy.model.state_dict(), os.path.join(output_path, f"ckpt_{run_name}_{last_exp_idx}.pt"))
         wandb.finish()

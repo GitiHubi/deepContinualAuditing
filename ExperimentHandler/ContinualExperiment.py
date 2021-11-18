@@ -20,7 +20,8 @@ def run_continual_experiment(experiment_parameters):
     payment_ds = PaymentDataset(experiment_parameters['data_dir'])
 
     # Get index assignments for all experiences
-    exp_assignments = bha.get_exp_assignment(experiment_parameters, payment_ds)
+    perc_matrix = bha.create_percnt_matrix(experiment_parameters)
+    exp_assignments = bha.get_exp_assignment(experiment_parameters, payment_ds, perc_matrix)
 
     # Get benchmark
     benchmark = bha.get_benchmark(experiment_parameters, payment_ds, exp_assignments)
@@ -33,8 +34,15 @@ def run_continual_experiment(experiment_parameters):
     log_wandb = experiment_parameters['wandb_proj'] != ''
     uha.init_wandb(experiment_parameters, run_name, log_wandb)
     output_path = os.path.join(experiment_parameters['outputs_path'], run_name)
+
     # Global iterator: starts from 0
     global_iter = 0
+
+    # Log data percentage matrix
+    if log_wandb:
+        data_perc_table = wandb.Table(columns=[f"{dept_id}" for dept_id in experiment_parameters["dept_ids"]],
+                                      data=perc_matrix)
+        wandb.log({"Data Percentage Matrix": data_perc_table}, step=global_iter)
 
     # iterate through all experiences (tasks) and train the model for each experience
     for exp_id, exp in enumerate(benchmark.train_stream):
@@ -81,9 +89,9 @@ def run_continual_experiment(experiment_parameters):
                     wandb.log({f"dept/loss_dept{dept_id}": dep_losses[-1]}, step=global_iter)
                 dep_losses = [l for l in dep_losses if l != None]
                 if len(dep_losses) > 0:
-                    wandb.log({f"dept/loss_dept{dept_id}_avg": np.mean(dep_losses)}, step=global_iter)
+                    wandb.log({f"dept/avg_loss_dept{dept_id}": np.mean(dep_losses)}, step=global_iter)
             # save checkpoint
-            torch.save(strategy.model.state_dict(), os.path.join(output_path, f"ckpt_{exp_id}.pt"))
+            torch.save(strategy.model.state_dict(), os.path.join(output_path, f"ckpt_{run_name}_{exp_id}.pt"))
 
         # increment global iterator
         global_iter += 1

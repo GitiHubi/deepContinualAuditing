@@ -20,7 +20,8 @@ def run_joint_experiment(experiment_parameters):
     payment_ds = PaymentDataset(experiment_parameters['data_dir'])
 
     # Get index assignments for all experiences
-    exp_assignments = bha.get_exp_assignment(experiment_parameters, payment_ds)
+    perc_matrix = bha.create_percnt_matrix(experiment_parameters)
+    exp_assignments = bha.get_exp_assignment(experiment_parameters, payment_ds, perc_matrix)
 
     # Get benchmark
     benchmark = bha.get_benchmark(experiment_parameters, payment_ds, exp_assignments)
@@ -33,6 +34,12 @@ def run_joint_experiment(experiment_parameters):
     log_wandb = experiment_parameters['wandb_proj'] != ''
     uha.init_wandb(experiment_parameters, run_name, log_wandb)
     output_path = os.path.join(experiment_parameters['outputs_path'], run_name)
+
+    # Log data percentage matrix
+    if log_wandb:
+        data_perc_table = wandb.Table(columns=[f"{dept_id}" for dept_id in experiment_parameters["dept_ids"]],
+                                      data=perc_matrix)
+        wandb.log({"Data Percentage Matrix": data_perc_table}, step=0)
 
     # ============================
     # Train jointly and evaluate on all experiences
@@ -68,11 +75,14 @@ def run_joint_experiment(experiment_parameters):
             loss_dept_i = None
         loss_per_dep[itr_dep].append(loss_dept_i)
 
+    # ============================
+    #            Log
+    # ============================
     if log_wandb:
         for itr_dep, dept_id in enumerate(experiment_parameters["dept_ids"]):
             dep_losses = loss_per_dep[itr_dep]
             if dep_losses[-1] != None:
                 wandb.log({f"dept/loss_dept{dept_id}": dep_losses[-1]}, step=last_exp_id)
 
-        torch.save(strategy.model.state_dict(), os.path.join(output_path, f"ckpt_0.pt"))
+        torch.save(strategy.model.state_dict(), os.path.join(output_path, f"ckpt_{run_name}_{last_exp_id}.pt"))
         wandb.finish()
