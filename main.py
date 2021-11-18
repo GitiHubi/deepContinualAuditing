@@ -32,7 +32,7 @@ if __name__ == "__main__":
     parser.add_argument('--seed', help='', nargs='?', type=int, default=1234)
 
     # dataset and data loading parameter
-    parser.add_argument('--dataset', help='', nargs='?', type=str, default='philadelphia')  # chicago, philadelphia
+    parser.add_argument('--dataset', help='', nargs='?', type=str, default='philadelphia', required=True)  # chicago, philadelphia
     parser.add_argument('--data_dir', help='', nargs='?', type=str,
                         default='./100_datasets/philadelphia')  # chicago, philadelphia
     parser.add_argument('--no_workers', help='', nargs='?', type=int, default=0)
@@ -73,7 +73,7 @@ if __name__ == "__main__":
     parser.add_argument('--strategy', help='', nargs='?', type=str, default='Naive')
     parser.add_argument('--wandb_proj', help='', nargs='?', type=str, default='')
 
-    parser.add_argument('--params_path', help='', nargs='?', type=str, default='params/params.yml')
+    parser.add_argument('--benchmark_configs_path', help='', nargs='?', type=str, default='benchmark_configs/benchmark_configs.yml')
     parser.add_argument('--outputs_path', help='', nargs='?', type=str, default='./outputs')
 
     # ==========
@@ -134,15 +134,15 @@ if __name__ == "__main__":
     else:
         raise NotImplementedError
 
-    # load yaml params
-    yaml_params = uha.load_params(experiment_parameter["params_path"])
-    experiment_parameter.update(yaml_params)
+    # load yaml benchmark_configs
+    benchmark_configs = uha.load_params(experiment_parameter["benchmark_configs_path"])
+    experiment_parameter.update(benchmark_configs)
 
     # set run name
     run_name = experiment_parameter['training_regime'] + '_' + experiment_parameter['strategy'] + '_' + \
-               experiment_parameter["scenario"] + "_" + f"s{experiment_parameter['seed']}"
-
-    run_name += "_" + time.strftime("%m-%d-%H-%M-%S")
+                experiment_parameter["reduction_type"] + "_" + f"{experiment_parameter['dataset']}" + '_' + \
+                f"s{experiment_parameter['seed']}"
+    run_name += '_' + time.strftime("%y-%m-%d-%H-%M-%S")
     experiment_parameter['run_name'] = run_name
 
     # case: baseline autoencoder experiment

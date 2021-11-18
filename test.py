@@ -101,7 +101,7 @@ if __name__ == "__main__":
     parser.add_argument('--architecture', help='', nargs='?', type=str, default='baseline')
     parser.add_argument('--architecture_size', help='', nargs='?', type=str, default='small')
     parser.add_argument('--bottleneck', help='', nargs='?', type=str, default='linear')
-    parser.add_argument('--params_path', help='', nargs='?', type=str, default='params/params.yml')
+    parser.add_argument('--params_path', help='', nargs='?', type=str, default='benchmark_configs/benchmark_configs.yml')
     parser.add_argument('--outputs_path', help='', nargs='?', type=str, default='./outputs')
     parser.add_argument('--run_name', help='', nargs='?', type=str, default='')
     args = parser.parse_args()
