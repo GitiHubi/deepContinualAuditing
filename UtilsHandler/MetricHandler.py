@@ -19,8 +19,8 @@ class MetricHandler(object):
         global_anomaly_dept = 1000
         local_anomaly_dept = 2000
 
-        # Remove all global anomalies
-        valid_indices = torch.where(ds[:][3] != global_anomaly_dept)[0]
+        # Remove all global and local   anomalies
+        valid_indices = torch.where(~torch.isin(ds[:][3], torch.tensor([global_anomaly_dept, local_anomaly_dept])))[0]
         ds = AvalancheSubset(ds, indices=valid_indices)
 
         # Compute loss for all dataset entries
@@ -41,8 +41,8 @@ class MetricHandler(object):
         recon_losses = torch.cat(recon_losses, dim=0)
 
         # Number of all local anomalies
-        k = torch.sum(ds[:][3]==local_anomaly_dept).item()
-        _, indices = torch.topk(recon_losses, k=10, largest=True)
+        k = torch.sum(torch.isin(ds[:][3], torch.tensor(params["target_dept_ids"]))).item()
+        recon_values, indices = torch.topk(recon_losses, k=10, largest=True)
 
         # False positives
         fp = 0
@@ -51,7 +51,10 @@ class MetricHandler(object):
                 fp += 1
         fp_ratio = fp / float(k)
 
-        return fp_ratio
+        info = {"rec_losses": recon_values.detach().cpu().numpy().tolist(),
+                "depts": ds[indices][3].cpu().numpy().tolist()}
+
+        return fp_ratio, info
 
     def compute_FN_ratio(self, strategy, ds, params):
         """
@@ -87,7 +90,7 @@ class MetricHandler(object):
 
         # Number of all local anomalies
         k = torch.sum(ds[:][3] == local_anomaly_dept).item()
-        _, indices = torch.topk(recon_losses, k=10, largest=True)
+        recon_values, indices = torch.topk(recon_losses, k=10, largest=True)
 
         # False negatives
         fn = 0
@@ -96,4 +99,7 @@ class MetricHandler(object):
                 fn += 1
         fn_ratio = fn / float(k)
 
-        return fn_ratio
+        info = {"rec_losses": recon_values.detach().cpu().numpy().tolist(),
+                "depts": ds[indices][3].cpu().numpy().tolist()}
+
+        return fn_ratio, info
