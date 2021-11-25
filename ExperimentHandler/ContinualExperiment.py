@@ -103,10 +103,20 @@ def run_continual_experiment(experiment_parameters):
     # ============================
 
     last_exp_id = len(benchmark.train_stream) - 1
-    fp_ratio = mha.compute_FP_ratio(strategy, benchmark.train_stream[last_exp_id].dataset, experiment_parameters)
-    fn_ratio = mha.compute_FN_ratio(strategy, benchmark.train_stream[last_exp_id].dataset, experiment_parameters)
+    fp_ratio, info_fp = mha.compute_FP_ratio(strategy, benchmark.train_stream[last_exp_id].dataset, experiment_parameters)
+    fn_ratio, info_fn = mha.compute_FN_ratio(strategy, benchmark.train_stream[last_exp_id].dataset, experiment_parameters)
 
     if log_wandb:
+        # FP results
         wandb.log({"fp_ratio": fp_ratio}, step=global_iter)
+        fp_table = wandb.Table(columns=[f"{i}" for i in range(len(info_fp["rec_losses"]))],
+                               data=[info_fp["depts"], info_fp["rec_losses"]])
+        wandb.log({"FP": fp_table}, step=global_iter)
+
+        # FN Results
         wandb.log({"fn_ratio": fn_ratio}, step=global_iter)
+        fn_table = wandb.Table(columns=[f"{i}" for i in range(len(info_fn["rec_losses"]))],
+                               data=[info_fn["depts"], info_fn["rec_losses"]])
+        wandb.log({"FN": fn_table}, step=global_iter)
+
         wandb.finish()
