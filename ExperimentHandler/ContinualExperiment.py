@@ -91,7 +91,7 @@ def run_continual_experiment(experiment_parameters):
                     wandb.log({f"dept/loss_dept{dept_id}": dep_losses[-1]}, step=global_iter)
                 dep_losses = [l for l in dep_losses if l != None]
                 if len(dep_losses) > 0:
-                    wandb.log({f"dept/avg_loss_dept{dept_id}": np.mean(dep_losses)}, step=global_iter)
+                    wandb.log({f"dept_avg/loss_dept_avg{dept_id}": np.mean(dep_losses)}, step=global_iter)
             # save checkpoint
             torch.save(strategy.model.state_dict(), os.path.join(output_path, f"ckpt_{run_name}_{exp_id}.pt"))
 
