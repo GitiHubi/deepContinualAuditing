@@ -249,6 +249,7 @@ class UtilsHandler(object):
         """ Initializes WandB. """
         if log_wandb:
             wandb.init(
+                entity=experiment_parameters['wandb_entity'],
                 project=experiment_parameters['wandb_proj'],
                 config=experiment_parameters,
                 id=run_name)

@@ -72,6 +72,7 @@ if __name__ == "__main__":
     # parse script arguments
     parser.add_argument('--strategy', help='', nargs='?', type=str, default='Naive')
     parser.add_argument('--wandb_proj', help='', nargs='?', type=str, default='')
+    parser.add_argument('--wandb_entity', help='', nargs='?', type=str, default=None)
 
     parser.add_argument('--benchmark_configs_path', help='', nargs='?', type=str, default='benchmark_configs/benchmark_configs.yml')
     parser.add_argument('--outputs_path', help='', nargs='?', type=str, default='./outputs')
