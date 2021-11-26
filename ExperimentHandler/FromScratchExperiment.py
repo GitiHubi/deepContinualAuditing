@@ -23,7 +23,7 @@ def run_fromscratch_experiment(experiment_parameters):
 
     # Get index assignments for all experiences
     perc_matrix = bha.create_percnt_matrix(experiment_parameters)
-    exp_assignments = bha.get_exp_assignment(experiment_parameters, payment_ds, perc_matrix)
+    exp_assignments, samples_matrix = bha.get_exp_assignment(experiment_parameters, payment_ds, perc_matrix)
 
     # Get benchmark
     benchmark = bha.get_benchmark(experiment_parameters, payment_ds, exp_assignments)
@@ -42,6 +42,10 @@ def run_fromscratch_experiment(experiment_parameters):
         data_perc_table = wandb.Table(columns=[f"{dept_id}" for dept_id in experiment_parameters["dept_ids"]],
                                       data=perc_matrix)
         wandb.log({"Data Percentage Matrix": data_perc_table}, step=0)
+
+        data_samples_table = wandb.Table(columns=[f"{dept_id}" for dept_id in experiment_parameters["dept_ids"]],
+                                         data=samples_matrix)
+        wandb.log({"Data Samples Matrix": data_samples_table}, step=0)
 
     # Get index of the last experience
     last_exp_idx = len(benchmark.train_stream) - 1
@@ -80,8 +84,8 @@ def run_fromscratch_experiment(experiment_parameters):
     # Compute FPs and FNs in the Final Experience
     # ============================
 
-    fp_ratio = mha.compute_FP_ratio(strategy, benchmark.train_stream[last_exp_idx].dataset, experiment_parameters)
-    fn_ratio = mha.compute_FN_ratio(strategy, benchmark.train_stream[last_exp_idx].dataset, experiment_parameters)
+    fp_ratio, info_fp = mha.compute_FP_ratio(strategy, benchmark.train_stream[last_exp_idx].dataset, experiment_parameters)
+    fn_ratio, info_fn = mha.compute_FN_ratio(strategy, benchmark.train_stream[last_exp_idx].dataset, experiment_parameters)
 
     # ============================
     #             Log
@@ -89,7 +93,15 @@ def run_fromscratch_experiment(experiment_parameters):
 
     if log_wandb:
         wandb.log({"fp_ratio": fp_ratio}, step=last_exp_idx)
+        fp_table = wandb.Table(columns=[f"{i}" for i in range(len(info_fp["rec_losses"]))],
+                               data=[info_fp["depts"], info_fp["rec_losses"]])
+        wandb.log({"FP": fp_table}, step=last_exp_idx)
+
         wandb.log({"fn_ratio": fn_ratio}, step=last_exp_idx)
+        fn_table = wandb.Table(columns=[f"{i}" for i in range(len(info_fn["rec_losses"]))],
+                               data=[info_fn["depts"], info_fn["rec_losses"]])
+        wandb.log({"FN": fn_table}, step=last_exp_idx)
+
 
         wandb.log({"experience/loss_train": loss_train_exp}, step=last_exp_idx)
         wandb.log({"experience/loss_exp": loss_eval_exp}, step=last_exp_idx)

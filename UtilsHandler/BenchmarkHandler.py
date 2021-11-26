@@ -58,23 +58,28 @@ class BenchmarkHandler(object):
 
         # for each experience set how much data to use from each department
         exp_assignments = []  # list of lists that determines which sample ids to use in each experience
+        samples_matrix = []
+
         for exp_id in range(n_experiences):
             percentages = perc_matrix[exp_id]
             experience_i_indices = []  # list of experience indices
 
             # for each department compute the number of samples that should be used
             # and assign random samples to the current experience
+            samples_row = []
             for i, dept_id in enumerate(params["dept_ids"]):
                 dept_i_perc = percentages[i]
                 # if anomaly:
                 if dept_id in params["anomaly_dept_ids"]:
                     # for anomaly departments only add in the final experience
                     if exp_id < n_experiences - 1:
+                        samples_row.append(0)
                         continue
                     dept_i_indices = copy.copy(ds_dep_indices[dept_id][:])
                     subset_max_idx = int(dept_i_perc * len(dept_i_indices))
                     experience_i_indices.extend(dept_i_indices[:subset_max_idx])
 
+                    samples_row.append(len(dept_i_indices[:subset_max_idx]))
                 # otherwise:
                 else:
                     start = exp_id * params["n_dept_samples_per_exp"]
@@ -83,6 +88,9 @@ class BenchmarkHandler(object):
                     subset_max_idx = int(dept_i_perc * len(dept_i_indices))
                     experience_i_indices.extend(dept_i_indices[:subset_max_idx])
 
-            exp_assignments.append(experience_i_indices)
+                    samples_row.append(len(dept_i_indices[:subset_max_idx]))
 
-        return exp_assignments
+            exp_assignments.append(experience_i_indices)
+            samples_matrix.append(samples_row)
+
+        return exp_assignments, samples_matrix

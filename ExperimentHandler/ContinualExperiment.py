@@ -23,7 +23,7 @@ def run_continual_experiment(experiment_parameters):
 
     # Get index assignments for all experiences
     perc_matrix = bha.create_percnt_matrix(experiment_parameters)
-    exp_assignments = bha.get_exp_assignment(experiment_parameters, payment_ds, perc_matrix)
+    exp_assignments, samples_matrix = bha.get_exp_assignment(experiment_parameters, payment_ds, perc_matrix)
 
     # Get benchmark
     benchmark = bha.get_benchmark(experiment_parameters, payment_ds, exp_assignments)
@@ -45,6 +45,11 @@ def run_continual_experiment(experiment_parameters):
         data_perc_table = wandb.Table(columns=[f"{dept_id}" for dept_id in experiment_parameters["dept_ids"]],
                                       data=perc_matrix)
         wandb.log({"Data Percentage Matrix": data_perc_table}, step=global_iter)
+
+        data_samples_table = wandb.Table(columns=[f"{dept_id}" for dept_id in experiment_parameters["dept_ids"]],
+                                      data=samples_matrix)
+        wandb.log({"Data Samples Matrix": data_samples_table}, step=global_iter)
+
 
     # iterate through all experiences (tasks) and train the model for each experience
     for exp_id, exp in enumerate(benchmark.train_stream):
