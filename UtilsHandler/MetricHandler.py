@@ -42,7 +42,7 @@ class MetricHandler(object):
 
         # Number of all local anomalies
         k = torch.sum(torch.isin(ds[:][3], torch.tensor(params["target_dept_ids"]))).item()
-        recon_values, indices = torch.topk(recon_losses, k=10, largest=True)
+        recon_values, indices = torch.topk(recon_losses, k=k, largest=True)
 
         # False positives
         fp = 0
@@ -90,7 +90,7 @@ class MetricHandler(object):
 
         # Number of all local anomalies
         k = torch.sum(ds[:][3] == local_anomaly_dept).item()
-        recon_values, indices = torch.topk(recon_losses, k=10, largest=True)
+        recon_values, indices = torch.topk(recon_losses, k=k, largest=True)
 
         # False negatives
         fn = 0
