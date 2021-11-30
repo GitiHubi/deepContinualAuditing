@@ -3,6 +3,7 @@ from avalanche.training.strategies import Naive, EWC, LwF, SynapticIntelligence
 from avalanche.evaluation.metrics import loss_metrics
 from avalanche.training.plugins import EvaluationPlugin, ReplayPlugin
 from avalanche.logging import InteractiveLogger
+from avalanche.training.storage_policy import ReservoirSamplingBuffer
 import NetworkHandler.BaselineAutoencoder as BaselineAutoencoder
 
 
@@ -86,7 +87,23 @@ class StrategyHandler(object):
                            device=device)
 
         elif experiment_parameters["strategy"] == "Replay":
+            # This replay strategy uses ExperienceBalancedBuffer
             replay_plugin = ReplayPlugin(mem_size=experiment_parameters["replay_mem_size"])
+            strategy = Naive(model=model,
+                             optimizer=optimizer,
+                             criterion=torch.nn.BCELoss(),
+                             train_mb_size=experiment_parameters["batch_size"],
+                             train_epochs=experiment_parameters["no_epochs"],
+                             evaluator=eval_plugin,
+                             plugins=[replay_plugin],
+                             device=device)
+
+        elif experiment_parameters["strategy"] == "Replay-Reservoir":
+            # This replay strategy uses ExperienceBalancedBuffer
+            storage_policy = ReservoirSamplingBuffer(max_size=experiment_parameters["replay_mem_size"])
+            replay_plugin = ReplayPlugin(mem_size=experiment_parameters["replay_mem_size"],
+                                         storage_policy=storage_policy)
+            
             strategy = Naive(model=model,
                              optimizer=optimizer,
                              criterion=torch.nn.BCELoss(),
