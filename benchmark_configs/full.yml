@@ -1,5 +1,5 @@
 
-reduction_type: "linear"
+reduction_type: "full"
 
 # number of experiences
 n_experiences: 10
