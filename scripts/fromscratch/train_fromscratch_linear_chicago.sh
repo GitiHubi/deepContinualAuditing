@@ -7,3 +7,4 @@ do
         --bottleneck "tanh" --seed $seed --training_regime 'fromscratch'
 done
 
+

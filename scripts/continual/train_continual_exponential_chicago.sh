@@ -24,5 +24,5 @@ do
   python main.py --strategy "EWC" --dataset "chicago" \
         --data_dir /netscratch/mschreyer/deepNadim/100_datasets/chicago/original_data/city_payments_encoded_all_new_anomalies.csv \
         --no_epochs 100 --benchmark_configs_path "./benchmark_configs/exponential.yml"  --wandb_proj "deepNadim" --wandb_entity "aiml_cl" \
-        --bottleneck "tanh" --ewc_lambda 50.0 --seed $seed --training_regime 'continual'
+        --bottleneck "tanh" --ewc_lambda 10.0 --seed $seed --training_regime 'continual'
 done
