@@ -1,4 +1,4 @@
-for seed in {0..4}
+for seed in {0..10}
 do
   echo "Running for seed $seed"
   python main.py --strategy "Naive" --dataset "chicago" \
