@@ -5,6 +5,7 @@ from avalanche.training.plugins import EvaluationPlugin, ReplayPlugin
 from avalanche.logging import InteractiveLogger
 from avalanche.training.storage_policy import ReservoirSamplingBuffer
 import NetworkHandler.BaselineAutoencoder as BaselineAutoencoder
+from UtilsHandler.strategy_utils import DeptBalancedBuffer
 
 
 class StrategyHandler(object):
@@ -104,6 +105,22 @@ class StrategyHandler(object):
             replay_plugin = ReplayPlugin(mem_size=experiment_parameters["replay_mem_size"],
                                          storage_policy=storage_policy)
             
+            strategy = Naive(model=model,
+                             optimizer=optimizer,
+                             criterion=torch.nn.BCELoss(),
+                             train_mb_size=experiment_parameters["batch_size"],
+                             train_epochs=experiment_parameters["no_epochs"],
+                             evaluator=eval_plugin,
+                             plugins=[replay_plugin],
+                             device=device)
+
+        elif experiment_parameters["strategy"] == "Replay-DeptBalanced":
+            # This replay strategy uses ExperienceBalancedBuffer
+            storage_policy = DeptBalancedBuffer(max_size=experiment_parameters["replay_mem_size"],
+                                                adaptive_size=True)
+            replay_plugin = ReplayPlugin(mem_size=experiment_parameters["replay_mem_size"],
+                                         storage_policy=storage_policy)
+
             strategy = Naive(model=model,
                              optimizer=optimizer,
                              criterion=torch.nn.BCELoss(),
