@@ -1,5 +1,8 @@
+###################################################
+#    Continual Learning with Linear Decay         #
+###################################################
 
-reduction_type: "exponential"
+reduction_type: "linear"
 
 # number of experiences
 n_experiences: 10
@@ -12,7 +15,7 @@ target_dept_ids: [10]
 anomaly_dept_ids: [1000, 2000]
 
 # percentage of samples for the target department in each experience
-target_dept_data_perc:  [1.0, 0.6, 0.36, 0.22, 0.13, 0.078, 0.047, 0.028, 0.017, 0.01]
+target_dept_data_perc:  [1.0, 0.89, 0.78, 0.67, 0.56, 0.45, 0.34, 0.23, 0.12, 0.01]
 
 # percentage of samples for the anomaly department(s) in each experience
 anomaly_dept_data_perc: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.1]
