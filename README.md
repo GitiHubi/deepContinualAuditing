@@ -5,3 +5,32 @@ Detection in Continuous Auditing of Financial Accounting Data**
 <a href="https://arxiv.org/abs/2112.13215"> [link to the paper] </a>
 
 
+## Code Structure
+
+    
+    ├── DeepContinualAuditing                    
+        ├── BenchmarkConfigs
+            ├── ...                   # benchmark config files as YAML files
+        ├── Data
+            ├── ...                   # Datasets as CSV files (should be copied here)
+        ├── ExperimentHandler
+            ├── ...                   # Implementation of different strategies (CL, Scratch, Joint)
+        ├── NetworkHandler
+            ├── ...                   # Implementation of the autoencoder model used in the experiments
+        ├── Scripts
+            ├── ...                   # Scripts for reproducibility
+        ├── UtilsHandler
+            ├── ...                   # Different util files for strategy and benchmark
+        ├── main.py                   # Main function is implemented here.
+
+
+## Running an experiment
+All scripts to reproduce results are saved under `./Scripts/`, therefore 
+to run an experiment you can simply execute the following command:
+
+```shell
+bash Scripts/FOLDER_NAME/BASH_SCRIPT_FILENAME.sh 
+```
+
+If datasets are stored in a different folder than `./Data`, you need to change
+`--data_dir` in the script you aim to run correspondingly.
