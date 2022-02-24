@@ -24,6 +24,12 @@ Detection in Continuous Auditing of Financial Accounting Data**
         ├── main.py                   # Main function is implemented here.
 
 
+## Datasets
+Datasets used in the paper can be downloaded from here:<br>
+LINK-TO-BE-ADDED <br>
+After downloading the CSV files, copy them to `./Data/` in the main
+directory of the repository.
+
 ## Running an experiment
 All scripts to reproduce results are saved under `./Scripts/`, therefore 
 to run an experiment you can simply execute the following command:
