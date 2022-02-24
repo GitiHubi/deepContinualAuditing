@@ -74,7 +74,7 @@ if __name__ == "__main__":
     parser.add_argument('--wandb_proj', help='', nargs='?', type=str, default='')
     parser.add_argument('--wandb_entity', help='', nargs='?', type=str, default=None)
 
-    parser.add_argument('--benchmark_configs_path', help='', nargs='?', type=str, default='benchmark_configs/benchmark_configs.yml')
+    parser.add_argument('--benchmark_configs_path', help='', nargs='?', type=str, default='BenchmarkConfigs/BenchmarkConfigs.yml')
     parser.add_argument('--outputs_path', help='', nargs='?', type=str, default='./outputs')
 
     # ==========
@@ -135,7 +135,7 @@ if __name__ == "__main__":
     else:
         raise NotImplementedError
 
-    # load yaml benchmark_configs
+    # load yaml BenchmarkConfigs
     benchmark_configs = uha.load_params(experiment_parameter["benchmark_configs_path"])
     experiment_parameter.update(benchmark_configs)
 

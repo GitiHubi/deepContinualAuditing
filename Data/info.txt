@@ -1,0 +1,3 @@
+This folder should contain the following two files:
+    - city_payments_encoded_all_new_anomalies.csv
+    - city_payments_fy2017_encoded_all_new_anomalies.csv
